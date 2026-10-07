@@ -21,7 +21,7 @@ export const brand = {
 
   headOffice: "Commercial Avenue, Bamenda, North West Region, Cameroon",
 
-  // Email sender identity (the address must be verified in Brevo).
+  // Email sender identity (the address must be verified in SendGrid).
   sender: {
     name: process.env.SENDER_NAME || "Vatican Express",
     email: process.env.SENDER_EMAIL || "tickets@vaticantravels.cm",

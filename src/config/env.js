@@ -65,7 +65,7 @@ export const env = {
     ssl: process.env.PG_SSL === "true" ? { rejectUnauthorized: false } : false,
   },
   redisUrl: normaliseRedisUrl(process.env.REDIS_URL),
-  brevoApiKey: process.env.BREVO_API_KEY || "",
+  sendgridApiKey: process.env.SENDGRID_API_KEY || "",
   campay: {
     baseUrl:
       stripSlash(process.env.CAMPAY_BASE_URL) || "https://www.campay.net/api",

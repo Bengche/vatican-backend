@@ -309,21 +309,25 @@ router.get(
     const seatCount =
       "(SELECT COUNT(*) FROM booking_seats bs WHERE bs.booking_id = b.id)";
 
+    // What the agency actually receives: fare plus its terminal fee online, the cash collected at the counter.
+    const agencyShare = `CASE WHEN COALESCE(b.payment_method, 'momo') = 'cash_counter' THEN b.total_amount_fcfa
+        ELSE (t.price_fcfa + ${Number(brand.pricing.terminalFeePerSeat)}) * ${seatCount} END`;
     const [stats, agencies, underbooked] = await Promise.all([
       db.query(
         `SELECT
            COALESCE(SUM(${seatCount}), 0) AS total_tickets,
-           COALESCE(SUM(b.total_amount_fcfa), 0) AS total_revenue,
+           COALESCE(SUM(${agencyShare}), 0) AS total_revenue,
            COALESCE(SUM(CASE WHEN b.payment_method = 'cash_counter' THEN b.total_amount_fcfa ELSE 0 END), 0) AS counter_revenue,
-           COALESCE(SUM(CASE WHEN COALESCE(b.payment_method, 'momo') <> 'cash_counter' THEN b.total_amount_fcfa ELSE 0 END), 0) AS momo_revenue
+           COALESCE(SUM(CASE WHEN COALESCE(b.payment_method, 'momo') <> 'cash_counter' THEN ${agencyShare} ELSE 0 END), 0) AS momo_revenue
          FROM bookings b
+         JOIN trips t ON t.id = b.trip_id
          WHERE b.status = 'confirmed' AND ${timeFilter}`,
         params,
       ),
       db.query(
         `SELECT ap.id AS agency_id, ap.park_name AS agency_name, ap.city,
                 COALESCE(SUM(${seatCount}), 0) AS tickets_sold,
-                COALESCE(SUM(b.total_amount_fcfa), 0) AS revenue_fcfa
+                COALESCE(SUM(${agencyShare}), 0) AS revenue_fcfa
            FROM agencies_parks ap
            LEFT JOIN routes r ON r.origin_park_id = ap.id
            LEFT JOIN trips t ON t.route_id = r.id

@@ -4,32 +4,57 @@ import { getBookingRecord } from "./receiptService.js";
 import { buildReceiptEmail, buildBroadcastEmail } from "./emailTemplates.js";
 import { renderTicketPdf } from "./ticketPdf.js";
 
-const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
+const SENDGRID_URL = "https://api.sendgrid.com/v3/mail/send";
 
-async function sendViaBrevo(payload) {
-  if (!env.brevoApiKey) {
-    console.warn("[Email] BREVO_API_KEY is not set; message not sent.");
+/**
+ * Sends one message through SendGrid. Throws on failure so the queue can retry.
+ * Returns the provider message id, or null when no API key is configured.
+ */
+async function sendEmail({ to, subject, html, attachments = [], category }) {
+  if (!env.sendgridApiKey) {
+    console.warn("[Email] SENDGRID_API_KEY is not set; message not sent.");
     return null;
   }
 
-  const response = await fetch(BREVO_API_URL, {
+  const payload = {
+    personalizations: [{ to: [{ email: to.email, ...(to.name ? { name: to.name } : {}) }] }],
+    from: { email: brand.sender.email, name: brand.sender.name },
+    reply_to: { email: brand.support.email, name: brand.name },
+    subject,
+    content: [{ type: "text/html", value: html }],
+    ...(attachments.length > 0 && {
+      attachments: attachments.map((file) => ({
+        content: file.content,
+        filename: file.filename,
+        type: file.type,
+        disposition: "attachment",
+      })),
+    }),
+    ...(category && { categories: [category] }),
+    // Link rewriting would hide the real ticket address and hurt deliverability.
+    tracking_settings: {
+      click_tracking: { enable: false, enable_text: false },
+      open_tracking: { enable: false },
+    },
+  };
+
+  const response = await fetch(SENDGRID_URL, {
     method: "POST",
     headers: {
-      accept: "application/json",
-      "api-key": env.brevoApiKey,
+      authorization: `Bearer ${env.sendgridApiKey}`,
       "content-type": "application/json",
     },
-    body: JSON.stringify({ sender: brand.sender, ...payload }),
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(20_000),
   });
 
-  const data = await response.json().catch(() => ({}));
-
   if (!response.ok) {
-    throw new Error(
-      data.message || `Email provider responded with status ${response.status}`,
-    );
+    const data = await response.json().catch(() => ({}));
+    const reason = data.errors?.map((e) => e.message).join("; ");
+    throw new Error(reason || `Email provider responded with status ${response.status}`);
   }
-  return data;
+
+  return response.headers.get("x-message-id") || "accepted";
 }
 
 /**
@@ -42,53 +67,36 @@ export async function sendBookingReceiptEmail({ bookingId }) {
   if (!record || record.booking_status !== "confirmed") return null;
 
   if (!record.recipientEmail) {
-    console.log(
-      `[Email] No recipient for booking ${record.booking_ref}; skipped.`,
-    );
+    console.log(`[Email] No recipient for booking ${record.booking_ref}; skipped.`);
     return null;
   }
 
   const pdf = await renderTicketPdf(record);
 
-  const data = await sendViaBrevo({
-    to: [
-      { email: record.recipientEmail, name: record.contactName || undefined },
-    ],
+  const messageId = await sendEmail({
+    to: { email: record.recipientEmail, name: record.contactName },
     subject: `Your e-ticket ${record.booking_ref}: ${record.origin_city} to ${record.destination_city}`,
-    htmlContent: buildReceiptEmail(record),
-    attachment: [
+    html: buildReceiptEmail(record),
+    attachments: [
       {
-        name: `${brand.name.replace(/\s+/g, "")}-Ticket-${record.booking_ref}.pdf`,
+        filename: `${brand.name.replace(/\s+/g, "")}-Ticket-${record.booking_ref}.pdf`,
         content: pdf.toString("base64"),
+        type: "application/pdf",
       },
     ],
-    tags: ["ticket-receipt"],
+    category: "ticket-receipt",
   });
 
-  if (data) console.log(`[Email] Receipt sent for ${record.booking_ref}.`);
-  return data;
+  if (messageId) console.log(`[Email] Receipt sent for ${record.booking_ref}.`);
+  return messageId;
 }
 
 /** Sends a trip update notice to a single passenger. */
-export async function sendBroadcastEmail({
-  toEmail,
-  toName,
-  subject,
-  messageBody,
-  trip,
-  qrCodeHash,
-}) {
-  return sendViaBrevo({
-    to: [{ email: toEmail, name: toName || undefined }],
+export async function sendBroadcastEmail({ toEmail, toName, subject, messageBody, trip, qrCodeHash }) {
+  return sendEmail({
+    to: { email: toEmail, name: toName },
     subject: `${brand.name}: ${subject}`,
-    htmlContent: buildBroadcastEmail({
-      toName,
-      subject,
-      messageBody,
-      trip,
-      qrCodeHash,
-      recipient: toEmail,
-    }),
-    tags: ["trip-update"],
+    html: buildBroadcastEmail({ toName, subject, messageBody, trip, qrCodeHash, recipient: toEmail }),
+    category: "trip-update",
   });
 }
