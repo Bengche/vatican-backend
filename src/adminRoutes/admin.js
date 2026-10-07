@@ -3,7 +3,13 @@ import db, { withTransaction } from "../database/pg.js";
 import { brand } from "../config/brand.js";
 import { requireAdmin, requireCounter } from "../middleware/auth.js";
 import { cancelBooking } from "../services/refundService.js";
-import { buildLayout, insertCells } from "../services/seatLayout.js";
+import {
+  buildLayout,
+  insertCells,
+  DEFAULT_LAYOUT,
+  LAYOUTS,
+  LAYOUT_VERSION,
+} from "../services/seatLayout.js";
 import {
   generateBookingRef,
   generateQrHash,
@@ -500,7 +506,7 @@ router.get(
   "/admin/buses",
   handle(async (req, res) => {
     const { rows } = await db.query(
-      `SELECT id, bus_number, park_id, total_seats, bus_type, is_active FROM buses ORDER BY bus_number ASC`,
+      `SELECT id, bus_number, park_id, total_seats, bus_type, is_active, seat_layout FROM buses ORDER BY bus_number ASC`,
     );
     res.json({ success: true, buses: rows });
   }),
@@ -511,7 +517,7 @@ router.get(
   handle(async (req, res) => {
     const parkId = needId(req.params.parkId);
     const { rows } = await db.query(
-      `SELECT id, bus_number, park_id, total_seats, bus_type, is_active FROM buses WHERE park_id = $1 ORDER BY bus_number ASC`,
+      `SELECT id, bus_number, park_id, total_seats, bus_type, is_active, seat_layout FROM buses WHERE park_id = $1 ORDER BY bus_number ASC`,
       [parkId],
     );
     res.json({ success: true, buses: rows });
@@ -530,21 +536,24 @@ router.post(
         .trim()
         .slice(0, 40) || "Classic";
     const capacity = Number.parseInt(req.body?.totalSeats, 10);
+    const seatLayout = String(req.body?.seatLayout ?? DEFAULT_LAYOUT);
 
     if (busNumber.length < 3 || busNumber.length > 20)
       throw new HttpError(400, "Enter the bus registration number.");
     if (!Number.isInteger(capacity) || capacity < 5 || capacity > 100) {
       throw new HttpError(400, "Seat capacity must be between 5 and 100.");
     }
+    if (!Object.hasOwn(LAYOUTS, seatLayout))
+      throw new HttpError(400, "Select a seat layout.");
 
-    const cells = buildLayout(capacity);
+    const cells = buildLayout(capacity, seatLayout);
 
     try {
       const bus = await withTransaction(async (client) => {
         const created = await client.query(
-          `INSERT INTO buses (park_id, bus_number, bus_type, total_seats, is_active)
-           VALUES ($1, $2, $3, $4, true) RETURNING id, bus_number, bus_type, total_seats`,
-          [parkId, busNumber, busType, capacity],
+          `INSERT INTO buses (park_id, bus_number, bus_type, total_seats, is_active, seat_layout, layout_version)
+           VALUES ($1, $2, $3, $4, true, $5, $6) RETURNING id, bus_number, bus_type, total_seats, seat_layout`,
+          [parkId, busNumber, busType, capacity, seatLayout, LAYOUT_VERSION],
         );
         await insertCells(client, created.rows[0].id, cells);
         return created.rows[0];

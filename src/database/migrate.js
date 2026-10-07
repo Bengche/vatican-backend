@@ -2,6 +2,8 @@ import db, { withTransaction } from "./pg.js";
 import { upgradeBusLayouts } from "../services/seatLayout.js";
 
 const MIGRATIONS = [
+  `ALTER TABLE buses ADD COLUMN IF NOT EXISTS seat_layout VARCHAR(10) NOT NULL DEFAULT '2+3'`,
+  `ALTER TABLE buses ADD COLUMN IF NOT EXISTS layout_version INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE bus_seats ADD COLUMN IF NOT EXISTS is_window BOOLEAN NOT NULL DEFAULT FALSE`,
   `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS passenger_email VARCHAR(255)`,
   `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP`,

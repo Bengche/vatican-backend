@@ -1,13 +1,22 @@
+// Seats on the right of the walkway for each plan; the left side always has two.
+export const LAYOUTS = { "2+3": 3, "2+2": 2 };
+export const DEFAULT_LAYOUT = "2+3";
+// Bump when buildLayout changes so unbooked buses are rebuilt at startup.
+export const LAYOUT_VERSION = 4;
+
 /**
  * Cameroon coach plan, front to back (driver on the left):
  *   row 1     driver | open cab space | front passenger seat (right window)
  *   row 2     2 seats | aisle | front door
- *   rows      2 seats | aisle | 3 seats
+ *   rows      2 seats | aisle | 2 or 3 seats
  *   door row  2 seats | aisle | rear door
- *   last row  remaining seats, no aisle, centred
+ *   last row  a normal row when the seats fit exactly, otherwise the leftovers centred without an aisle
  * Non-seat cells (driver, doors, aisles) are stored as non-bookable rows.
  */
-export function buildLayout(capacity) {
+export function buildLayout(capacity, type = DEFAULT_LAYOUT) {
+  const right = LAYOUTS[type] ?? LAYOUTS[DEFAULT_LAYOUT];
+  const cols = 3 + right;
+  const rowSize = 2 + right;
   const cells = [];
   let seatNumber = 0;
 
@@ -17,18 +26,24 @@ export function buildLayout(capacity) {
   };
   const marker = (label, row, col) =>
     cells.push({ label, row, col, isAisle: true, isWindow: false });
-  const door = (row) => [4, 5, 6].forEach((col) => marker("DOOR", row, col));
-  const doorRow = (row) => {
+  const leftPair = (row) => {
     seat(row, 1, true);
     seat(row, 2, false);
     marker("AISLE", row, 3);
-    door(row);
+  };
+  const normalRow = (row) => {
+    leftPair(row);
+    for (let col = 4; col <= cols; col += 1) seat(row, col, col === cols);
+  };
+  const doorRow = (row) => {
+    leftPair(row);
+    for (let col = 4; col <= cols; col += 1) marker("DOOR", row, col);
   };
 
   let row = 1;
   marker("DRIVER", row, 1);
-  [2, 3, 4, 5].forEach((col) => marker("AISLE", row, col));
-  seat(row, 6, true);
+  for (let col = 2; col < cols; col += 1) marker("AISLE", row, col);
+  seat(row, cols, true);
 
   let rest = Math.max(capacity - 1, 0);
 
@@ -40,21 +55,16 @@ export function buildLayout(capacity) {
   const hasRearDoor = rest >= 3;
   if (hasRearDoor) rest -= 2;
 
-  let fullRows = Math.floor(rest / 5);
-  let lastCount = rest % 5;
+  let fullRows = Math.floor(rest / rowSize);
+  let lastCount = rest % rowSize;
   if (lastCount === 0 && fullRows > 0) {
     fullRows -= 1;
-    lastCount = 5;
+    lastCount = rowSize;
   }
 
   for (let i = 0; i < fullRows; i += 1) {
     row += 1;
-    seat(row, 1, true);
-    seat(row, 2, false);
-    marker("AISLE", row, 3);
-    seat(row, 4, false);
-    seat(row, 5, false);
-    seat(row, 6, true);
+    normalRow(row);
   }
 
   if (hasRearDoor) {
@@ -62,11 +72,12 @@ export function buildLayout(capacity) {
     doorRow(row);
   }
 
-  if (lastCount > 0) {
+  if (lastCount === rowSize) {
     row += 1;
-    for (let col = 1; col <= lastCount; col += 1) {
-      seat(row, col, lastCount === 5 && (col === 1 || col === 5));
-    }
+    normalRow(row);
+  } else if (lastCount > 0) {
+    row += 1;
+    for (let col = 1; col <= lastCount; col += 1) seat(row, col, false);
   }
 
   return cells;
@@ -110,7 +121,11 @@ export async function relayoutBus(client, busId, { force = false } = {}) {
     if (booked.rowCount > 0) return "has-bookings";
   }
 
-  const cells = buildLayout(seats.length);
+  const bus = await client.query(
+    `SELECT seat_layout FROM buses WHERE id = $1`,
+    [busId],
+  );
+  const cells = buildLayout(seats.length, bus.rows[0]?.seat_layout);
   const seatCells = cells.filter((c) => !c.isAisle);
   const markerCells = cells.filter((c) => c.isAisle);
 
@@ -132,14 +147,18 @@ export async function relayoutBus(client, busId, { force = false } = {}) {
     ],
   );
   await insertCells(client, busId, markerCells);
+  await client.query(`UPDATE buses SET layout_version = $2 WHERE id = $1`, [
+    busId,
+    LAYOUT_VERSION,
+  ]);
   return "updated";
 }
 
-/** Applies the current plan to buses still on an older layout (front door not yet in row 2) that have no bookings. */
+/** Applies the current plan to buses on an older layout version that have no bookings. */
 export async function upgradeBusLayouts(db, withTransaction) {
   const { rows } = await db.query(
-    `SELECT b.id FROM buses b
-      WHERE NOT EXISTS (SELECT 1 FROM bus_seats s WHERE s.bus_id = b.id AND s.seat_label = 'DOOR' AND s.row_num = 2)`,
+    `SELECT b.id FROM buses b WHERE b.layout_version < $1`,
+    [LAYOUT_VERSION],
   );
   for (const { id } of rows) {
     const result = await withTransaction((client) => relayoutBus(client, id));
