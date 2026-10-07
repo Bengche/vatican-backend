@@ -14,20 +14,37 @@ router.post(
   "/register",
   registerLimiter,
   handle(async (req, res) => {
-    const fullName = String(req.body?.fullName ?? "").trim().replace(/\s+/g, " ");
+    const fullName = String(req.body?.fullName ?? "")
+      .trim()
+      .replace(/\s+/g, " ");
     const phone = toNationalPhone(req.body?.phoneNumber);
-    const email = String(req.body?.email ?? "").trim().toLowerCase();
+    const email = String(req.body?.email ?? "")
+      .trim()
+      .toLowerCase();
     const age = Number.parseInt(req.body?.age, 10);
     const gender = String(req.body?.gender ?? "").toLowerCase();
-    const preference = PREFERENCES.includes(req.body?.discussionPreference) ? req.body.discussionPreference : "no_preference";
+    const preference = PREFERENCES.includes(req.body?.discussionPreference)
+      ? req.body.discussionPreference
+      : "no_preference";
     const password = String(req.body?.password ?? "");
 
-    if (fullName.length < 3 || fullName.length > 120) throw new HttpError(400, "Enter your full name.");
-    if (!phone) throw new HttpError(400, "Enter a valid 9-digit phone number starting with 6.");
-    if (!isValidEmail(email)) throw new HttpError(400, "Enter a valid email address.");
-    if (!Number.isInteger(age) || age < 12 || age > 119) throw new HttpError(400, "Enter a valid age.");
+    if (fullName.length < 3 || fullName.length > 120)
+      throw new HttpError(400, "Enter your full name.");
+    if (!phone)
+      throw new HttpError(
+        400,
+        "Enter a valid 9-digit phone number starting with 6.",
+      );
+    if (!isValidEmail(email))
+      throw new HttpError(400, "Enter a valid email address.");
+    if (!Number.isInteger(age) || age < 12 || age > 119)
+      throw new HttpError(400, "Enter a valid age.");
     if (!GENDERS.includes(gender)) throw new HttpError(400, "Select a gender.");
-    if (password.length < 8 || password.length > 72) throw new HttpError(400, "Your password must be between 8 and 72 characters.");
+    if (password.length < 8 || password.length > 72)
+      throw new HttpError(
+        400,
+        "Your password must be between 8 and 72 characters.",
+      );
 
     const duplicate = await db.query(
       "SELECT phone_number, email FROM users WHERE phone_number = $1 OR LOWER(email) = $2 LIMIT 1",
@@ -51,11 +68,17 @@ router.post(
         [fullName, phone, email, passwordHash, age, gender, preference],
       );
     } catch (error) {
-      if (error.code === "23505") throw new HttpError(409, "An account with these details already exists. Please sign in.");
+      if (error.code === "23505")
+        throw new HttpError(
+          409,
+          "An account with these details already exists. Please sign in.",
+        );
       throw error;
     }
 
-    res.status(201).json({ success: true, message: "Your account has been created." });
+    res
+      .status(201)
+      .json({ success: true, message: "Your account has been created." });
   }, "We could not create your account right now. Please try again."),
 );
 

@@ -35,7 +35,10 @@ export async function acquireSeatLocks(tripId, seatIds, holder) {
     }
     return { success: true, lockedSeats: acquired };
   } catch (err) {
-    console.warn("[SeatLock] Redis unavailable, using database check only:", err.message);
+    console.warn(
+      "[SeatLock] Redis unavailable, using database check only:",
+      err.message,
+    );
     return { success: true, lockedSeats: [] };
   }
 }

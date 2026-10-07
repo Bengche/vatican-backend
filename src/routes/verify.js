@@ -15,7 +15,13 @@ router.get(
     const { hash } = req.params;
 
     if (!HASH_PATTERN.test(hash)) {
-      return res.status(404).json({ success: false, valid: false, message: "This ticket could not be found." });
+      return res
+        .status(404)
+        .json({
+          success: false,
+          valid: false,
+          message: "This ticket could not be found.",
+        });
     }
 
     const { rows } = await db.query(
@@ -59,18 +65,27 @@ router.get(
 
     const ticket = rows[0];
     if (!ticket) {
-      return res.status(404).json({ success: false, valid: false, message: "This ticket could not be found." });
+      return res
+        .status(404)
+        .json({
+          success: false,
+          valid: false,
+          message: "This ticket could not be found.",
+        });
     }
 
     const valid = ticket.booking_status === "confirmed";
     return res.json({
       success: true,
       valid,
-      message: valid ? undefined : "This ticket has not been paid for or has been cancelled.",
+      message: valid
+        ? undefined
+        : "This ticket has not been paid for or has been cancelled.",
       ticket: {
         ...ticket,
         agency_name: brand.name,
-        route_code: `${ticket.origin_city} - ${ticket.destination_city}`.toUpperCase(),
+        route_code:
+          `${ticket.origin_city} - ${ticket.destination_city}`.toUpperCase(),
       },
     });
   }, "We could not verify this ticket right now."),
@@ -83,7 +98,10 @@ router.get(
     const { hash } = req.params;
     if (!HASH_PATTERN.test(hash)) return res.status(404).end();
 
-    const exists = await db.query("SELECT 1 FROM bookings WHERE qr_code_hash = $1", [hash]);
+    const exists = await db.query(
+      "SELECT 1 FROM bookings WHERE qr_code_hash = $1",
+      [hash],
+    );
     if (exists.rows.length === 0) return res.status(404).end();
 
     const png = await QRCode.toBuffer(verifyUrl(hash), {
@@ -91,7 +109,10 @@ router.get(
       width: 360,
       color: { dark: brand.colors.primary, light: "#ffffff" },
     });
-    res.set({ "Content-Type": "image/png", "Cache-Control": "public, max-age=31536000, immutable" });
+    res.set({
+      "Content-Type": "image/png",
+      "Cache-Control": "public, max-age=31536000, immutable",
+    });
     res.send(png);
   }),
 );

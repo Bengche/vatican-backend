@@ -25,7 +25,9 @@ async function sendViaBrevo(payload) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(data.message || `Email provider responded with status ${response.status}`);
+    throw new Error(
+      data.message || `Email provider responded with status ${response.status}`,
+    );
   }
   return data;
 }
@@ -40,17 +42,26 @@ export async function sendBookingReceiptEmail({ bookingId }) {
   if (!record || record.booking_status !== "confirmed") return null;
 
   if (!record.recipientEmail) {
-    console.log(`[Email] No recipient for booking ${record.booking_ref}; skipped.`);
+    console.log(
+      `[Email] No recipient for booking ${record.booking_ref}; skipped.`,
+    );
     return null;
   }
 
   const pdf = await renderTicketPdf(record);
 
   const data = await sendViaBrevo({
-    to: [{ email: record.recipientEmail, name: record.contactName || undefined }],
+    to: [
+      { email: record.recipientEmail, name: record.contactName || undefined },
+    ],
     subject: `Your e-ticket ${record.booking_ref}: ${record.origin_city} to ${record.destination_city}`,
     htmlContent: buildReceiptEmail(record),
-    attachment: [{ name: `${brand.name.replace(/\s+/g, "")}-Ticket-${record.booking_ref}.pdf`, content: pdf.toString("base64") }],
+    attachment: [
+      {
+        name: `${brand.name.replace(/\s+/g, "")}-Ticket-${record.booking_ref}.pdf`,
+        content: pdf.toString("base64"),
+      },
+    ],
     tags: ["ticket-receipt"],
   });
 
@@ -59,11 +70,25 @@ export async function sendBookingReceiptEmail({ bookingId }) {
 }
 
 /** Sends a trip update notice to a single passenger. */
-export async function sendBroadcastEmail({ toEmail, toName, subject, messageBody, trip, qrCodeHash }) {
+export async function sendBroadcastEmail({
+  toEmail,
+  toName,
+  subject,
+  messageBody,
+  trip,
+  qrCodeHash,
+}) {
   return sendViaBrevo({
     to: [{ email: toEmail, name: toName || undefined }],
     subject: `${brand.name}: ${subject}`,
-    htmlContent: buildBroadcastEmail({ toName, subject, messageBody, trip, qrCodeHash, recipient: toEmail }),
+    htmlContent: buildBroadcastEmail({
+      toName,
+      subject,
+      messageBody,
+      trip,
+      qrCodeHash,
+      recipient: toEmail,
+    }),
     tags: ["trip-update"],
   });
 }

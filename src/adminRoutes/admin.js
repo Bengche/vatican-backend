@@ -2,7 +2,11 @@ import express from "express";
 import db, { withTransaction } from "../database/pg.js";
 import { brand } from "../config/brand.js";
 import { requireAdmin } from "../middleware/auth.js";
-import { generateBookingRef, generateQrHash, parsePassengers } from "../routes/bookings.js";
+import {
+  generateBookingRef,
+  generateQrHash,
+  parsePassengers,
+} from "../routes/bookings.js";
 import { queueBroadcastEmail } from "../services/queueService.js";
 import { HttpError, handle } from "../utils/httpError.js";
 import { toInternationalPhone, isValidEmail } from "../utils/format.js";
@@ -50,30 +54,54 @@ router.get(
 router.post(
   "/admin/schedules",
   handle(async (req, res) => {
-    const originParkId = needId(req.body?.originParkId, "Select a departure terminal.");
-    const destinationParkId = needId(req.body?.destinationParkId, "Select a destination terminal.");
+    const originParkId = needId(
+      req.body?.originParkId,
+      "Select a departure terminal.",
+    );
+    const destinationParkId = needId(
+      req.body?.destinationParkId,
+      "Select a destination terminal.",
+    );
     const busId = needId(req.body?.busId, "Select a coach.");
     const departureDate = String(req.body?.departureDate ?? "");
     const departureTime = String(req.body?.departureTime ?? "");
     const fare = Number.parseInt(req.body?.farePrice, 10);
 
     if (originParkId === destinationParkId) {
-      throw new HttpError(400, "The departure and destination terminals must be different.");
+      throw new HttpError(
+        400,
+        "The departure and destination terminals must be different.",
+      );
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(departureDate)) throw new HttpError(400, "Select a valid travel date.");
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(departureTime)) throw new HttpError(400, "Select a valid departure time.");
-    if (!Number.isInteger(fare) || fare < 500 || fare > 500000) throw new HttpError(400, "Enter a valid fare in XAF.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(departureDate))
+      throw new HttpError(400, "Select a valid travel date.");
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(departureTime))
+      throw new HttpError(400, "Select a valid departure time.");
+    if (!Number.isInteger(fare) || fare < 500 || fare > 500000)
+      throw new HttpError(400, "Enter a valid fare in XAF.");
 
     // The DB only accepts 'morning' or 'evening'; derive it from the departure time.
-    const shift = Number(departureTime.slice(0, 2)) >= 12 ? "evening" : "morning";
+    const shift =
+      Number(departureTime.slice(0, 2)) >= 12 ? "evening" : "morning";
 
     const trip = await withTransaction(async (client) => {
-      const today = await client.query("SELECT ($1::date >= (NOW() AT TIME ZONE $2)::date) AS ok", [departureDate, brand.timezone]);
-      if (!today.rows[0].ok) throw new HttpError(400, "The travel date cannot be in the past.");
+      const today = await client.query(
+        "SELECT ($1::date >= (NOW() AT TIME ZONE $2)::date) AS ok",
+        [departureDate, brand.timezone],
+      );
+      if (!today.rows[0].ok)
+        throw new HttpError(400, "The travel date cannot be in the past.");
 
-      const bus = await client.query("SELECT is_active FROM buses WHERE id = $1", [busId]);
+      const bus = await client.query(
+        "SELECT is_active FROM buses WHERE id = $1",
+        [busId],
+      );
       if (!bus.rows[0]) throw new HttpError(404, "Coach not found.");
-      if (!bus.rows[0].is_active) throw new HttpError(409, "This coach is not operational and cannot be scheduled.");
+      if (!bus.rows[0].is_active)
+        throw new HttpError(
+          409,
+          "This coach is not operational and cannot be scheduled.",
+        );
 
       const existing = await client.query(
         "SELECT id FROM routes WHERE origin_park_id = $1 AND destination_park_id = $2 LIMIT 1",
@@ -92,7 +120,11 @@ router.post(
         `SELECT 1 FROM trips WHERE bus_id = $1 AND travel_date = $2 AND departure_time = $3 AND status = 'open'`,
         [busId, departureDate, departureTime],
       );
-      if (duplicate.rows.length > 0) throw new HttpError(409, "This coach already has a departure at that date and time.");
+      if (duplicate.rows.length > 0)
+        throw new HttpError(
+          409,
+          "This coach already has a departure at that date and time.",
+        );
 
       const inserted = await client.query(
         `INSERT INTO trips (route_id, bus_id, travel_date, departure_time, travel_shift, price_fcfa, status)
@@ -101,11 +133,17 @@ router.post(
       );
       return inserted.rows[0];
     }).catch((error) => {
-      if (error.code === "23503") throw new HttpError(400, "The selected terminal or coach does not exist.");
+      if (error.code === "23503")
+        throw new HttpError(
+          400,
+          "The selected terminal or coach does not exist.",
+        );
       throw error;
     });
 
-    res.status(201).json({ success: true, message: "Departure published.", trip });
+    res
+      .status(201)
+      .json({ success: true, message: "Departure published.", trip });
   }, "We could not publish this departure."),
 );
 
@@ -116,17 +154,29 @@ router.patch(
     const tripId = needId(req.params.id);
 
     await withTransaction(async (client) => {
-      await client.query("SELECT id FROM trips WHERE id = $1 FOR UPDATE", [tripId]);
+      await client.query("SELECT id FROM trips WHERE id = $1 FOR UPDATE", [
+        tripId,
+      ]);
       const paid = await client.query(
         "SELECT 1 FROM bookings WHERE trip_id = $1 AND status = 'confirmed' LIMIT 1",
         [tripId],
       );
       if (paid.rows.length > 0) {
-        throw new HttpError(409, "This departure already has confirmed passengers. Notify them before changing the schedule.");
+        throw new HttpError(
+          409,
+          "This departure already has confirmed passengers. Notify them before changing the schedule.",
+        );
       }
-      await client.query("UPDATE bookings SET status = 'cancelled' WHERE trip_id = $1 AND status = 'pending'", [tripId]);
-      const result = await client.query("UPDATE trips SET status = 'cancelled' WHERE id = $1 AND status = 'open' RETURNING id", [tripId]);
-      if (!result.rows[0]) throw new HttpError(404, "Departure not found or already closed.");
+      await client.query(
+        "UPDATE bookings SET status = 'cancelled' WHERE trip_id = $1 AND status = 'pending'",
+        [tripId],
+      );
+      const result = await client.query(
+        "UPDATE trips SET status = 'cancelled' WHERE id = $1 AND status = 'open' RETURNING id",
+        [tripId],
+      );
+      if (!result.rows[0])
+        throw new HttpError(404, "Departure not found or already closed.");
     });
 
     res.json({ success: true, message: "Departure withdrawn." });
@@ -153,14 +203,20 @@ router.post(
         [tripId, brand.timezone],
       );
       const trip = tripRes.rows[0];
-      if (!trip || trip.status !== "open") throw new HttpError(404, "This departure is not available.");
-      if (Number(trip.minutes_to_departure) < 0) throw new HttpError(409, "This coach has already departed.");
+      if (!trip || trip.status !== "open")
+        throw new HttpError(404, "This departure is not available.");
+      if (Number(trip.minutes_to_departure) < 0)
+        throw new HttpError(409, "This coach has already departed.");
 
       const validSeats = await client.query(
         "SELECT id FROM bus_seats WHERE bus_id = $1 AND id = ANY($2::bigint[]) AND is_aisle = false",
         [trip.bus_id, seatIds],
       );
-      if (validSeats.rows.length !== seatIds.length) throw new HttpError(400, "The selected seats do not belong to this coach.");
+      if (validSeats.rows.length !== seatIds.length)
+        throw new HttpError(
+          400,
+          "The selected seats do not belong to this coach.",
+        );
 
       const conflict = await client.query(
         `SELECT 1 FROM booking_seats bs JOIN bookings b ON bs.booking_id = b.id
@@ -169,7 +225,11 @@ router.post(
           LIMIT 1`,
         [tripId, seatIds, HOLD_MINUTES],
       );
-      if (conflict.rows.length > 0) throw new HttpError(409, "One or more selected seats are already reserved or paid for.");
+      if (conflict.rows.length > 0)
+        throw new HttpError(
+          409,
+          "One or more selected seats are already reserved or paid for.",
+        );
 
       const total = Number(trip.price_fcfa) * passengers.length;
       const lead = passengers[0];
@@ -179,7 +239,16 @@ router.post(
             passenger_name, passenger_phone, id_card_number)
          VALUES ($1, $2, $3, $4, $5, 'confirmed', 'cash_counter', $6, $7, $8)
          RETURNING id, booking_ref, total_amount_fcfa, status`,
-        [req.user.id, tripId, await generateBookingRef(client), generateQrHash(), total, lead.name, phone, lead.idCardNumber],
+        [
+          req.user.id,
+          tripId,
+          await generateBookingRef(client),
+          generateQrHash(),
+          total,
+          lead.name,
+          phone,
+          lead.idCardNumber,
+        ],
       );
 
       for (const passenger of passengers) {
@@ -187,13 +256,26 @@ router.post(
           `INSERT INTO booking_seats
              (booking_id, seat_id, passenger_name, passenger_age, passenger_gender, discussion_preference, id_card_number, is_counter_booking)
            VALUES ($1, $2, $3, $4, $5, 'no_preference', $6, true)`,
-          [created.rows[0].id, passenger.seatId, passenger.name, passenger.age, passenger.gender, passenger.idCardNumber],
+          [
+            created.rows[0].id,
+            passenger.seatId,
+            passenger.name,
+            passenger.age,
+            passenger.gender,
+            passenger.idCardNumber,
+          ],
         );
       }
       return created.rows[0];
     });
 
-    res.status(201).json({ success: true, message: "Ticket issued and seats confirmed.", booking });
+    res
+      .status(201)
+      .json({
+        success: true,
+        message: "Ticket issued and seats confirmed.",
+        booking,
+      });
   }, "We could not issue this ticket."),
 );
 
@@ -206,7 +288,8 @@ router.get(
   handle(async (req, res) => {
     const { period = "today", startDate, endDate } = req.query;
 
-    let timeFilter = "b.created_at >= (NOW() AT TIME ZONE 'Africa/Douala')::date";
+    let timeFilter =
+      "b.created_at >= (NOW() AT TIME ZONE 'Africa/Douala')::date";
     let params = [];
 
     if (period === "week") {
@@ -218,11 +301,13 @@ router.get(
       if (!valid.test(String(startDate)) || !valid.test(String(endDate))) {
         throw new HttpError(400, "Select a valid date range.");
       }
-      timeFilter = "b.created_at >= $1::date AND b.created_at < ($2::date + INTERVAL '1 day')";
+      timeFilter =
+        "b.created_at >= $1::date AND b.created_at < ($2::date + INTERVAL '1 day')";
       params = [startDate, endDate];
     }
 
-    const seatCount = "(SELECT COUNT(*) FROM booking_seats bs WHERE bs.booking_id = b.id)";
+    const seatCount =
+      "(SELECT COUNT(*) FROM booking_seats bs WHERE bs.booking_id = b.id)";
 
     const [stats, agencies, underbooked] = await Promise.all([
       db.query(
@@ -267,7 +352,12 @@ router.get(
       ),
     ]);
 
-    res.json({ success: true, stats: stats.rows[0], agencies: agencies.rows, underbooked: underbooked.rows });
+    res.json({
+      success: true,
+      stats: stats.rows[0],
+      agencies: agencies.rows,
+      underbooked: underbooked.rows,
+    });
   }, "We could not load the metrics right now."),
 );
 
@@ -282,8 +372,10 @@ router.post(
     const subject = String(req.body?.subject ?? "").trim();
     const messageBody = String(req.body?.messageBody ?? "").trim();
 
-    if (subject.length < 3 || subject.length > 150) throw new HttpError(400, "Enter a subject of up to 150 characters.");
-    if (messageBody.length < 5 || messageBody.length > 2000) throw new HttpError(400, "Enter a message of up to 2000 characters.");
+    if (subject.length < 3 || subject.length > 150)
+      throw new HttpError(400, "Enter a subject of up to 150 characters.");
+    if (messageBody.length < 5 || messageBody.length > 2000)
+      throw new HttpError(400, "Enter a message of up to 2000 characters.");
 
     const tripRes = await db.query(
       `SELECT t.travel_date, t.departure_time, t.travel_shift, buses.bus_number, buses.bus_type,
@@ -326,12 +418,22 @@ router.post(
 
     const valid = recipients.rows.filter((r) => isValidEmail(r.email));
     if (valid.length === 0) {
-      throw new HttpError(404, "No passenger email addresses were found for this departure.");
+      throw new HttpError(
+        404,
+        "No passenger email addresses were found for this departure.",
+      );
     }
 
     const results = await Promise.allSettled(
       valid.map((r) =>
-        queueBroadcastEmail({ toEmail: r.email, toName: r.name, subject, messageBody, trip, qrCodeHash: r.qr_code_hash }),
+        queueBroadcastEmail({
+          toEmail: r.email,
+          toName: r.name,
+          subject,
+          messageBody,
+          trip,
+          qrCodeHash: r.qr_code_hash,
+        }),
       ),
     );
     const sent = results.filter((r) => r.status === "fulfilled").length;
@@ -373,11 +475,17 @@ router.post(
   "/admin/buses",
   handle(async (req, res) => {
     const parkId = needId(req.body?.parkId, "Select a terminal.");
-    const busNumber = String(req.body?.busNumber ?? "").trim().toUpperCase();
-    const busType = String(req.body?.busType ?? "Classic").trim().slice(0, 40) || "Classic";
+    const busNumber = String(req.body?.busNumber ?? "")
+      .trim()
+      .toUpperCase();
+    const busType =
+      String(req.body?.busType ?? "Classic")
+        .trim()
+        .slice(0, 40) || "Classic";
     const capacity = Number.parseInt(req.body?.totalSeats, 10);
 
-    if (busNumber.length < 3 || busNumber.length > 20) throw new HttpError(400, "Enter the coach registration number.");
+    if (busNumber.length < 3 || busNumber.length > 20)
+      throw new HttpError(400, "Enter the coach registration number.");
     if (!Number.isInteger(capacity) || capacity < 5 || capacity > 100) {
       throw new HttpError(400, "Seat capacity must be between 5 and 100.");
     }
@@ -419,10 +527,21 @@ router.post(
         );
         return created.rows[0];
       });
-      res.status(201).json({ success: true, message: `Coach ${bus.bus_number} registered with ${capacity} seats.`, bus });
+      res
+        .status(201)
+        .json({
+          success: true,
+          message: `Coach ${bus.bus_number} registered with ${capacity} seats.`,
+          bus,
+        });
     } catch (error) {
-      if (error.code === "23505") throw new HttpError(409, "A coach with this registration number already exists.");
-      if (error.code === "23503") throw new HttpError(400, "The selected terminal does not exist.");
+      if (error.code === "23505")
+        throw new HttpError(
+          409,
+          "A coach with this registration number already exists.",
+        );
+      if (error.code === "23503")
+        throw new HttpError(400, "The selected terminal does not exist.");
       throw error;
     }
   }, "We could not register this coach."),
@@ -432,7 +551,8 @@ router.patch(
   "/admin/buses/:busId/status",
   handle(async (req, res) => {
     const busId = needId(req.params.busId);
-    if (typeof req.body?.isActive !== "boolean") throw new HttpError(400, "Provide the new operational status.");
+    if (typeof req.body?.isActive !== "boolean")
+      throw new HttpError(400, "Provide the new operational status.");
 
     const { rows } = await db.query(
       "UPDATE buses SET is_active = $1 WHERE id = $2 RETURNING id, bus_number, is_active",
@@ -462,14 +582,22 @@ router.put(
   handle(async (req, res) => {
     const parkId = needId(req.params.id);
     const momo = toInternationalPhone(req.body?.momoNumber);
-    if (!momo) throw new HttpError(400, "Enter a valid 9-digit Cameroon number starting with 6.");
+    if (!momo)
+      throw new HttpError(
+        400,
+        "Enter a valid 9-digit Cameroon number starting with 6.",
+      );
 
     const { rows } = await db.query(
       "UPDATE agencies_parks SET momo_number = $1 WHERE id = $2 RETURNING id, park_name, momo_number",
       [momo, parkId],
     );
     if (!rows[0]) throw new HttpError(404, "Terminal not found.");
-    res.json({ success: true, message: "Payout number updated.", agencyPark: rows[0] });
+    res.json({
+      success: true,
+      message: "Payout number updated.",
+      agencyPark: rows[0],
+    });
   }),
 );
 

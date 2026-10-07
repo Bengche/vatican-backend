@@ -1,6 +1,12 @@
 import { brand } from "../config/brand.js";
 
-const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const HTML_ESCAPES = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
 
 export const escapeHtml = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
@@ -12,7 +18,9 @@ export const formatXAF = (amount) =>
 export function formatDate(value) {
   const match = String(value ?? "").match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!match) return String(value ?? "");
-  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  const date = new Date(
+    Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
+  );
   return date.toLocaleDateString("en-GB", {
     weekday: "short",
     day: "numeric",
@@ -39,12 +47,17 @@ export function formatDateTime(value) {
 }
 
 export const shiftLabel = (shift) =>
-  shift === "evening" ? "Evening" : shift === "morning" ? "Morning" : "Scheduled";
+  shift === "evening"
+    ? "Evening"
+    : shift === "morning"
+      ? "Morning"
+      : "Scheduled";
 
 // Accepts 6XXXXXXXX, 2376XXXXXXXX or +2376XXXXXXXX and returns the 9-digit national number, or null.
 export function toNationalPhone(input) {
   let digits = String(input ?? "").replace(/\D/g, "");
-  if (digits.length === 12 && digits.startsWith("237")) digits = digits.slice(3);
+  if (digits.length === 12 && digits.startsWith("237"))
+    digits = digits.slice(3);
   return /^6\d{8}$/.test(digits) ? digits : null;
 }
 
@@ -54,4 +67,6 @@ export const toInternationalPhone = (input) => {
 };
 
 export const isValidEmail = (value) =>
-  typeof value === "string" && value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  typeof value === "string" &&
+  value.length <= 254 &&
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());

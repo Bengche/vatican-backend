@@ -23,7 +23,10 @@ const BOOKED_SEATS = `
            OR (bk.status = 'pending' AND bk.created_at >= NOW() - make_interval(mins => $HOLD))))`;
 
 const sql = (template, tz, cut, hold) =>
-  template.replaceAll("$TZ", `$${tz}`).replaceAll("$CUT", `$${cut}`).replaceAll("$HOLD", `$${hold}`);
+  template
+    .replaceAll("$TZ", `$${tz}`)
+    .replaceAll("$CUT", `$${cut}`)
+    .replaceAll("$HOLD", `$${hold}`);
 
 const TRIP_COLUMNS = `
   t.id,
@@ -62,8 +65,15 @@ router.get(
   handle(async (req, res) => {
     const { fromPark, toPark, travelDate } = req.query;
 
-    if (!/^\d+$/.test(String(fromPark)) || !/^\d+$/.test(String(toPark)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(travelDate))) {
-      throw new HttpError(400, "Select a departure, a destination and a travel date.");
+    if (
+      !/^\d+$/.test(String(fromPark)) ||
+      !/^\d+$/.test(String(toPark)) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(String(travelDate))
+    ) {
+      throw new HttpError(
+        400,
+        "Select a departure, a destination and a travel date.",
+      );
     }
 
     const { rows } = await db.query(
@@ -72,7 +82,14 @@ router.get(
        WHERE r.origin_park_id = $1 AND r.destination_park_id = $2 AND t.travel_date = $3
          AND ${sql(ON_SALE, 4, 5, 6)}
        ORDER BY t.departure_time ASC`,
-      [fromPark, toPark, travelDate, brand.timezone, CUTOFF_MINUTES, HOLD_MINUTES],
+      [
+        fromPark,
+        toPark,
+        travelDate,
+        brand.timezone,
+        CUTOFF_MINUTES,
+        HOLD_MINUTES,
+      ],
     );
 
     res.json({ success: true, trips: rows.map(withAvailability) });
@@ -83,7 +100,10 @@ router.get(
 router.get(
   "/trips/upcoming",
   handle(async (req, res) => {
-    const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 8, 1), 20);
+    const limit = Math.min(
+      Math.max(Number.parseInt(req.query.limit, 10) || 8, 1),
+      20,
+    );
 
     const { rows } = await db.query(
       `SELECT ${TRIP_COLUMNS}, ${sql(BOOKED_SEATS, 1, 2, 3)} AS "bookedSeats"
@@ -103,12 +123,21 @@ router.get(
   "/trips/:id/quote",
   handle(async (req, res) => {
     const seats = Number.parseInt(req.query.seats, 10);
-    if (!/^\d+$/.test(req.params.id) || !Number.isInteger(seats) || seats < 1 || seats > 8) {
+    if (
+      !/^\d+$/.test(req.params.id) ||
+      !Number.isInteger(seats) ||
+      seats < 1 ||
+      seats > 8
+    ) {
       throw new HttpError(400, "Invalid quote request.");
     }
 
-    const { rows } = await db.query("SELECT price_fcfa FROM trips WHERE id = $1", [req.params.id]);
-    if (!rows[0]) throw new HttpError(404, "This departure is no longer available.");
+    const { rows } = await db.query(
+      "SELECT price_fcfa FROM trips WHERE id = $1",
+      [req.params.id],
+    );
+    if (!rows[0])
+      throw new HttpError(404, "This departure is no longer available.");
 
     res.json({ success: true, quote: quoteFare(rows[0].price_fcfa, seats) });
   }),

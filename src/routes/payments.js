@@ -8,12 +8,20 @@ import { HttpError, handle } from "../utils/httpError.js";
 const router = express.Router();
 
 async function loadOwnedBooking(req, bookingId) {
-  if (!/^\d{1,18}$/.test(String(bookingId))) throw new HttpError(400, "Invalid booking.");
+  if (!/^\d{1,18}$/.test(String(bookingId)))
+    throw new HttpError(400, "Invalid booking.");
 
-  const { rows } = await db.query("SELECT id, user_id, booking_ref, status FROM bookings WHERE id = $1", [bookingId]);
+  const { rows } = await db.query(
+    "SELECT id, user_id, booking_ref, status FROM bookings WHERE id = $1",
+    [bookingId],
+  );
   const booking = rows[0];
 
-  if (!booking || (String(booking.user_id) !== String(req.user.id) && !isAdminRole(req.user.role))) {
+  if (
+    !booking ||
+    (String(booking.user_id) !== String(req.user.id) &&
+      !isAdminRole(req.user.role))
+  ) {
     throw new HttpError(404, "Booking not found.");
   }
   return booking;
@@ -41,11 +49,22 @@ router.post(
         phone: req.body?.phone,
         description: `Bus ticket ${booking.booking_ref}`,
       });
-      res.json({ success: true, message: "Payment request sent to your phone.", ...collection });
+      res.json({
+        success: true,
+        message: "Payment request sent to your phone.",
+        ...collection,
+      });
     } catch (error) {
-      if (error.status && error.status < 500) throw new HttpError(error.status, error.message);
-      console.error("[Payments] Collection failed:", error.details || error.message);
-      throw new HttpError(502, "We could not reach your Mobile Money provider. Please try again in a moment.");
+      if (error.status && error.status < 500)
+        throw new HttpError(error.status, error.message);
+      console.error(
+        "[Payments] Collection failed:",
+        error.details || error.message,
+      );
+      throw new HttpError(
+        502,
+        "We could not reach your Mobile Money provider. Please try again in a moment.",
+      );
     }
   }, "We could not start the payment. Please try again."),
 );
@@ -59,7 +78,11 @@ router.get(
     let payment = await latestPayment(booking.id);
 
     // Do not rely on the webhook alone: ask the gateway while the payment is outstanding.
-    if (booking.status === "pending" && payment?.status === "pending" && payment.transaction_ref) {
+    if (
+      booking.status === "pending" &&
+      payment?.status === "pending" &&
+      payment.transaction_ref
+    ) {
       try {
         await settlePayment(payment.transaction_ref);
         booking = await loadOwnedBooking(req, booking.id);
@@ -84,16 +107,22 @@ router.get(
  */
 const webhook = async (req, res) => {
   const params = { ...req.query, ...req.body };
-  const reference = typeof params.reference === "string" ? params.reference.trim() : "";
+  const reference =
+    typeof params.reference === "string" ? params.reference.trim() : "";
 
-  if (!reference) return res.status(400).json({ success: false, message: "Missing reference." });
+  if (!reference)
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing reference." });
 
   try {
     const result = await settlePayment(reference);
     return res.status(200).json({ success: true, outcome: result.outcome });
   } catch (error) {
     console.error("[Payments] Webhook processing failed:", error.message);
-    return res.status(500).json({ success: false, message: "Webhook handler failed." });
+    return res
+      .status(500)
+      .json({ success: false, message: "Webhook handler failed." });
   }
 };
 

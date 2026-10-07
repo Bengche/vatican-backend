@@ -20,7 +20,12 @@ router.post(
     const password = String(req.body?.password ?? "");
 
     if (!identifier || !password) {
-      return res.status(400).json({ success: false, message: "Enter your phone number or email and your password." });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Enter your phone number or email and your password.",
+        });
     }
 
     const phone = identifier.includes("@") ? null : toNationalPhone(identifier);
@@ -34,13 +39,26 @@ router.post(
     );
     const user = rows[0];
 
-    const valid = await bcrypt.compare(password, user?.password_hash || DUMMY_HASH);
+    const valid = await bcrypt.compare(
+      password,
+      user?.password_hash || DUMMY_HASH,
+    );
     if (!user || !valid) {
-      return res.status(401).json({ success: false, message: "Incorrect phone number, email or password." });
+      return res
+        .status(401)
+        .json({
+          success: false,
+          message: "Incorrect phone number, email or password.",
+        });
     }
 
     const token = jwt.sign(
-      { id: user.id, phone_number: user.phone_number, email: user.email, role: user.role },
+      {
+        id: user.id,
+        phone_number: user.phone_number,
+        email: user.email,
+        role: user.role,
+      },
       env.jwtSecret,
       { expiresIn: "30d" },
     );

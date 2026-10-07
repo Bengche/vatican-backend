@@ -37,19 +37,32 @@ async function findSeatConflicts(client, bookingId, tripId) {
 async function runPayouts(record) {
   const seatCount = record.seats.length || 1;
   const { terminalFeePerSeat, serviceFeePerSeat } = brand.pricing;
-  const agencyAmount = Number(record.unit_price) * seatCount + terminalFeePerSeat * seatCount;
+  const agencyAmount =
+    Number(record.unit_price) * seatCount + terminalFeePerSeat * seatCount;
   const platformAmount = serviceFeePerSeat * seatCount;
   const label = `${record.booking_ref} (${seatCount} seat${seatCount > 1 ? "s" : ""})`;
 
   const payouts = [
-    { name: "agency", phone: record.agency_momo, amount: agencyAmount, ref: `AGENCY-${record.booking_id}` },
-    { name: "platform", phone: env.platformPayoutNumber, amount: platformAmount, ref: `PLATFORM-${record.booking_id}` },
+    {
+      name: "agency",
+      phone: record.agency_momo,
+      amount: agencyAmount,
+      ref: `AGENCY-${record.booking_id}`,
+    },
+    {
+      name: "platform",
+      phone: env.platformPayoutNumber,
+      amount: platformAmount,
+      ref: `PLATFORM-${record.booking_id}`,
+    },
   ];
 
   for (const payout of payouts) {
     const phone = toInternationalPhone(payout.phone);
     if (!phone || payout.amount <= 0) {
-      console.warn(`[Payout] ${payout.name} payout skipped for ${label}: no valid number configured.`);
+      console.warn(
+        `[Payout] ${payout.name} payout skipped for ${label}: no valid number configured.`,
+      );
       continue;
     }
     try {
@@ -59,9 +72,14 @@ async function runPayouts(record) {
         description: `Ticket revenue ${label}`,
         externalReference: payout.ref,
       });
-      console.log(`[Payout] ${payout.name} ${payout.amount} XAF for ${label}. Ref ${result.reference}`);
+      console.log(
+        `[Payout] ${payout.name} ${payout.amount} XAF for ${label}. Ref ${result.reference}`,
+      );
     } catch (error) {
-      console.error(`[Payout] ${payout.name} payout FAILED for ${label}:`, error.details || error.message);
+      console.error(
+        `[Payout] ${payout.name} payout FAILED for ${label}:`,
+        error.details || error.message,
+      );
     }
   }
 }
@@ -70,18 +88,29 @@ async function afterConfirmation(bookingId) {
   const record = await getBookingRecord(bookingId);
   if (!record) return;
 
-  await releaseSeatLocks(record.trip_id, record.seats.map((s) => s.seat_id)).catch(() => {});
-  await runPayouts(record).catch((err) => console.error("[Payout] Unexpected error:", err.message));
+  await releaseSeatLocks(
+    record.trip_id,
+    record.seats.map((s) => s.seat_id),
+  ).catch(() => {});
+  await runPayouts(record).catch((err) =>
+    console.error("[Payout] Unexpected error:", err.message),
+  );
 
   try {
     await queueTicketReceiptEmail(bookingId);
   } catch (err) {
-    console.error(`[Email] Could not dispatch ticket for ${record.booking_ref}:`, err.message);
+    console.error(
+      `[Email] Could not dispatch ticket for ${record.booking_ref}:`,
+      err.message,
+    );
   }
 }
 
 async function handleFailedPayment(payment) {
-  await db.query(`UPDATE payments SET status = 'FAILED' WHERE id = $1 AND status = 'pending'`, [payment.id]);
+  await db.query(
+    `UPDATE payments SET status = 'FAILED' WHERE id = $1 AND status = 'pending'`,
+    [payment.id],
+  );
 
   const other = await db.query(
     `SELECT 1 FROM payments WHERE booking_id = $1 AND id <> $2 AND status IN ('pending', 'SUCCESS') LIMIT 1`,
@@ -94,8 +123,14 @@ async function handleFailedPayment(payment) {
     [payment.booking_id],
   );
   if (cancelled.rows[0]) {
-    const seats = await db.query(`SELECT seat_id FROM booking_seats WHERE booking_id = $1`, [payment.booking_id]);
-    await releaseSeatLocks(cancelled.rows[0].trip_id, seats.rows.map((s) => s.seat_id));
+    const seats = await db.query(
+      `SELECT seat_id FROM booking_seats WHERE booking_id = $1`,
+      [payment.booking_id],
+    );
+    await releaseSeatLocks(
+      cancelled.rows[0].trip_id,
+      seats.rows.map((s) => s.seat_id),
+    );
   }
   return { outcome: "FAILED" };
 }
@@ -119,37 +154,61 @@ export async function settlePayment(reference) {
   if (status === "pending") return { outcome: "pending" };
   if (status === "FAILED") return handleFailedPayment(payment);
 
-  if (remote.amount !== undefined && Number(remote.amount) < Number(payment.amount_fcfa)) {
-    console.error(`[Payments] Amount mismatch on ${reference}: received ${remote.amount}, expected ${payment.amount_fcfa}.`);
+  if (
+    remote.amount !== undefined &&
+    Number(remote.amount) < Number(payment.amount_fcfa)
+  ) {
+    console.error(
+      `[Payments] Amount mismatch on ${reference}: received ${remote.amount}, expected ${payment.amount_fcfa}.`,
+    );
     return { outcome: "amount_mismatch" };
   }
 
   const result = await withTransaction(async (client) => {
-    const locked = await client.query(`SELECT status FROM payments WHERE id = $1 FOR UPDATE`, [payment.id]);
+    const locked = await client.query(
+      `SELECT status FROM payments WHERE id = $1 FOR UPDATE`,
+      [payment.id],
+    );
     if (locked.rows[0].status === "SUCCESS") return { alreadySettled: true };
 
-    await client.query(`UPDATE payments SET status = 'SUCCESS' WHERE id = $1`, [payment.id]);
+    await client.query(`UPDATE payments SET status = 'SUCCESS' WHERE id = $1`, [
+      payment.id,
+    ]);
 
-    const bookingRes = await client.query(`SELECT id, trip_id, status FROM bookings WHERE id = $1`, [payment.booking_id]);
+    const bookingRes = await client.query(
+      `SELECT id, trip_id, status FROM bookings WHERE id = $1`,
+      [payment.booking_id],
+    );
     const booking = bookingRes.rows[0];
     if (!booking) return { alreadySettled: true };
 
-    await client.query(`SELECT id FROM trips WHERE id = $1 FOR UPDATE`, [booking.trip_id]);
+    await client.query(`SELECT id FROM trips WHERE id = $1 FOR UPDATE`, [
+      booking.trip_id,
+    ]);
 
     if (booking.status === "confirmed") return { alreadySettled: true };
 
     // Payment arrived after the hold expired: only confirm if the seats are still free.
     if (booking.status === "cancelled") {
-      const conflicts = await findSeatConflicts(client, booking.id, booking.trip_id);
+      const conflicts = await findSeatConflicts(
+        client,
+        booking.id,
+        booking.trip_id,
+      );
       if (conflicts.length > 0) return { refundRequired: true };
     }
 
-    await client.query(`UPDATE bookings SET status = 'confirmed' WHERE id = $1`, [booking.id]);
+    await client.query(
+      `UPDATE bookings SET status = 'confirmed' WHERE id = $1`,
+      [booking.id],
+    );
     return { confirmed: true, bookingId: booking.id };
   });
 
   if (result.refundRequired) {
-    console.error(`[Payments] REFUND REQUIRED: payment ${reference} succeeded but seats were released to another passenger (booking ${payment.booking_id}).`);
+    console.error(
+      `[Payments] REFUND REQUIRED: payment ${reference} succeeded but seats were released to another passenger (booking ${payment.booking_id}).`,
+    );
     return { outcome: "refund_required" };
   }
 
@@ -161,7 +220,9 @@ export async function settlePayment(reference) {
 export async function startCollection({ bookingId, phone, description }) {
   const formattedPhone = toInternationalPhone(phone);
   if (!formattedPhone) {
-    const error = new Error("Enter a valid 9-digit Mobile Money number starting with 6.");
+    const error = new Error(
+      "Enter a valid 9-digit Mobile Money number starting with 6.",
+    );
     error.status = 400;
     throw error;
   }
@@ -178,7 +239,9 @@ export async function startCollection({ bookingId, phone, description }) {
   const booking = rows[0];
 
   if (!booking || booking.status !== "pending") {
-    const error = new Error("This reservation is no longer active. Please select your seats again.");
+    const error = new Error(
+      "This reservation is no longer active. Please select your seats again.",
+    );
     error.status = 409;
     throw error;
   }
@@ -193,10 +256,20 @@ export async function startCollection({ bookingId, phone, description }) {
   await db.query(
     `INSERT INTO payments (booking_id, payer_phone, merchant_momo_number, payment_gateway, transaction_ref, amount_fcfa, status)
      VALUES ($1, $2, $3, 'campay', $4, $5, 'pending')`,
-    [booking.id, formattedPhone, booking.momo_number, collection.reference, booking.total_amount_fcfa],
+    [
+      booking.id,
+      formattedPhone,
+      booking.momo_number,
+      collection.reference,
+      booking.total_amount_fcfa,
+    ],
   );
 
-  return { reference: collection.reference, ussdCode: collection.ussd_code || null, operator: collection.operator || null };
+  return {
+    reference: collection.reference,
+    ussdCode: collection.ussd_code || null,
+    operator: collection.operator || null,
+  };
 }
 
 /** Cancels reservations whose hold has expired and releases their seats. */
@@ -209,8 +282,14 @@ export async function expireStaleBookings() {
   );
 
   for (const booking of rows) {
-    const seats = await db.query(`SELECT seat_id FROM booking_seats WHERE booking_id = $1`, [booking.id]);
-    await releaseSeatLocks(booking.trip_id, seats.rows.map((s) => s.seat_id));
+    const seats = await db.query(
+      `SELECT seat_id FROM booking_seats WHERE booking_id = $1`,
+      [booking.id],
+    );
+    await releaseSeatLocks(
+      booking.trip_id,
+      seats.rows.map((s) => s.seat_id),
+    );
   }
   return rows.length;
 }
@@ -229,7 +308,10 @@ export async function reconcilePendingPayments() {
     try {
       await settlePayment(reference);
     } catch (err) {
-      console.warn(`[Payments] Reconcile failed for ${reference}:`, err.message);
+      console.warn(
+        `[Payments] Reconcile failed for ${reference}:`,
+        err.message,
+      );
     }
   }
 }

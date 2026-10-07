@@ -3,18 +3,28 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const REQUIRED = ["PG_HOST", "PG_DATABASE", "PG_USER", "PG_PASSWORD", "JWT_SECRET"];
+const REQUIRED = [
+  "PG_HOST",
+  "PG_DATABASE",
+  "PG_USER",
+  "PG_PASSWORD",
+  "JWT_SECRET",
+];
 const missing = REQUIRED.filter((key) => !process.env[key]);
 
 if (missing.length > 0) {
-  console.error(`[Config] Missing required environment variables: ${missing.join(", ")}`);
+  console.error(
+    `[Config] Missing required environment variables: ${missing.join(", ")}`,
+  );
   process.exit(1);
 }
 
 const isProduction = process.env.NODE_ENV === "production";
 
 if (isProduction && process.env.JWT_SECRET.length < 32) {
-  console.error("[Config] JWT_SECRET must be at least 32 characters in production.");
+  console.error(
+    "[Config] JWT_SECRET must be at least 32 characters in production.",
+  );
   process.exit(1);
 }
 
@@ -27,10 +37,13 @@ function normaliseRedisUrl(raw) {
   const matches = value.match(/rediss?:\/\/[^\s'"]+/g);
   if (!matches) return "";
   const url = matches[matches.length - 1];
-  return /--tls\b/.test(value) && url.startsWith("redis://") ? `rediss://${url.slice(8)}` : url;
+  return /--tls\b/.test(value) && url.startsWith("redis://")
+    ? `rediss://${url.slice(8)}`
+    : url;
 }
 
-const frontendUrl = stripSlash(process.env.FRONTEND_URL) || "http://localhost:3000";
+const frontendUrl =
+  stripSlash(process.env.FRONTEND_URL) || "http://localhost:3000";
 
 export const env = {
   isProduction,
@@ -54,7 +67,8 @@ export const env = {
   redisUrl: normaliseRedisUrl(process.env.REDIS_URL),
   brevoApiKey: process.env.BREVO_API_KEY || "",
   campay: {
-    baseUrl: stripSlash(process.env.CAMPAY_BASE_URL) || "https://www.campay.net/api",
+    baseUrl:
+      stripSlash(process.env.CAMPAY_BASE_URL) || "https://www.campay.net/api",
     permanentToken: process.env.CAMPAY_APP_PERMANENT_ACCESS_TOKEN || "",
     username: process.env.CAMPAY_APP_USERNAME || "",
     password: process.env.CAMPAY_APP_PASSWORD || "",

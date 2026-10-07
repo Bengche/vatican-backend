@@ -27,7 +27,8 @@ router.get(
     const { tripId } = req.query;
 
     if (!/^\d+$/.test(busId)) throw new HttpError(400, "Invalid bus.");
-    if (tripId !== undefined && !/^\d+$/.test(String(tripId))) throw new HttpError(400, "Invalid trip.");
+    if (tripId !== undefined && !/^\d+$/.test(String(tripId)))
+      throw new HttpError(400, "Invalid trip.");
 
     const { rows } = await db.query(
       `SELECT

@@ -6,6 +6,7 @@ export const brand = {
   name: process.env.AGENCY_NAME || "Vatican Express",
   legalName: "Vatican Express Co. Ltd",
   monogram: "VE",
+  descriptor: "Intercity Coaches",
   tagline: "Intercity Travel across Cameroon",
   // Prefix of generated booking references, e.g. VE-7K2M9Q
   refPrefix: "VE",

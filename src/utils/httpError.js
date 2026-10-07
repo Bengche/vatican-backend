@@ -6,14 +6,18 @@ export class HttpError extends Error {
 }
 
 /** Wraps an async Express handler so thrown HttpErrors become JSON responses. */
-export const handle = (fn, fallbackMessage = "Something went wrong. Please try again.") => async (req, res) => {
-  try {
-    await fn(req, res);
-  } catch (error) {
-    if (error instanceof HttpError) {
-      return res.status(error.status).json({ success: false, message: error.message });
+export const handle =
+  (fn, fallbackMessage = "Something went wrong. Please try again.") =>
+  async (req, res) => {
+    try {
+      await fn(req, res);
+    } catch (error) {
+      if (error instanceof HttpError) {
+        return res
+          .status(error.status)
+          .json({ success: false, message: error.message });
+      }
+      console.error(`[${req.method} ${req.originalUrl}]`, error);
+      return res.status(500).json({ success: false, message: fallbackMessage });
     }
-    console.error(`[${req.method} ${req.originalUrl}]`, error);
-    return res.status(500).json({ success: false, message: fallbackMessage });
-  }
-};
+  };

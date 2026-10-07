@@ -3,9 +3,15 @@ import crypto from "crypto";
 import db, { withTransaction } from "../database/pg.js";
 import { brand } from "../config/brand.js";
 import { authenticateToken, isAdminRole } from "../middleware/auth.js";
-import { acquireSeatLocks, releaseSeatLocks } from "../services/seatLockService.js";
+import {
+  acquireSeatLocks,
+  releaseSeatLocks,
+} from "../services/seatLockService.js";
 import { quoteFare } from "../services/pricing.js";
-import { getBookingRecord, listConfirmedBookingsForUser } from "../services/receiptService.js";
+import {
+  getBookingRecord,
+  listConfirmedBookingsForUser,
+} from "../services/receiptService.js";
 import { renderTicketPdf } from "../services/ticketPdf.js";
 import { HttpError, handle } from "../utils/httpError.js";
 import { isValidEmail } from "../utils/format.js";
@@ -18,12 +24,18 @@ const GENDERS = ["male", "female", "other"];
 const REF_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const randomCode = (length) =>
-  Array.from(crypto.randomBytes(length), (byte) => REF_ALPHABET[byte % REF_ALPHABET.length]).join("");
+  Array.from(
+    crypto.randomBytes(length),
+    (byte) => REF_ALPHABET[byte % REF_ALPHABET.length],
+  ).join("");
 
 export async function generateBookingRef(runner, prefix = brand.refPrefix) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const ref = `${prefix}-${randomCode(6)}`;
-    const exists = await runner.query("SELECT 1 FROM bookings WHERE booking_ref = $1", [ref]);
+    const exists = await runner.query(
+      "SELECT 1 FROM bookings WHERE booking_ref = $1",
+      [ref],
+    );
     if (exists.rows.length === 0) return ref;
   }
   throw new Error("Could not allocate a unique booking reference.");
@@ -37,26 +49,40 @@ export function parsePassengers(rawPassengers, { requireAge = true } = {}) {
     throw new HttpError(400, "Please select at least one seat.");
   }
   if (rawPassengers.length > MAX_SEATS_PER_BOOKING) {
-    throw new HttpError(400, `A single booking is limited to ${MAX_SEATS_PER_BOOKING} seats.`);
+    throw new HttpError(
+      400,
+      `A single booking is limited to ${MAX_SEATS_PER_BOOKING} seats.`,
+    );
   }
 
   const seen = new Set();
 
   return rawPassengers.map((raw, index) => {
-    const position = rawPassengers.length > 1 ? ` for passenger ${index + 1}` : "";
+    const position =
+      rawPassengers.length > 1 ? ` for passenger ${index + 1}` : "";
     const seatId = Number.parseInt(raw?.seatId, 10);
-    const name = String(raw?.name ?? "").trim().replace(/\s+/g, " ");
-    const idCardNumber = String(raw?.idCardNumber ?? "").trim().toUpperCase();
+    const name = String(raw?.name ?? "")
+      .trim()
+      .replace(/\s+/g, " ");
+    const idCardNumber = String(raw?.idCardNumber ?? "")
+      .trim()
+      .toUpperCase();
     const age = Number.parseInt(raw?.age, 10);
     const gender = String(raw?.gender ?? "").toLowerCase();
 
     if (!Number.isInteger(seatId) || seatId <= 0 || seen.has(seatId)) {
-      throw new HttpError(400, "The seat selection is invalid. Please select your seats again.");
+      throw new HttpError(
+        400,
+        "The seat selection is invalid. Please select your seats again.",
+      );
     }
     seen.add(seatId);
 
     if (name.length < 3 || name.length > 120) {
-      throw new HttpError(400, `Enter the full name as shown on the ID${position}.`);
+      throw new HttpError(
+        400,
+        `Enter the full name as shown on the ID${position}.`,
+      );
     }
     if (idCardNumber.length < 5 || idCardNumber.length > 30) {
       throw new HttpError(400, `Enter a valid ID document number${position}.`);
@@ -68,12 +94,19 @@ export function parsePassengers(rawPassengers, { requireAge = true } = {}) {
       throw new HttpError(400, `Select a gender${position}.`);
     }
 
-    return { seatId, name, idCardNumber, age: Number.isInteger(age) ? age : null, gender };
+    return {
+      seatId,
+      name,
+      idCardNumber,
+      age: Number.isInteger(age) ? age : null,
+      gender,
+    };
   });
 }
 
 const parseId = (value) => {
-  if (!/^\d{1,18}$/.test(String(value))) throw new HttpError(400, "Invalid identifier.");
+  if (!/^\d{1,18}$/.test(String(value)))
+    throw new HttpError(400, "Invalid identifier.");
   return String(value);
 };
 
@@ -89,7 +122,11 @@ router.get(
 
 async function loadAuthorizedRecord(req) {
   const record = await getBookingRecord(parseId(req.params.id));
-  if (!record || (String(record.user_id) !== String(req.user.id) && !isAdminRole(req.user.role))) {
+  if (
+    !record ||
+    (String(record.user_id) !== String(req.user.id) &&
+      !isAdminRole(req.user.role))
+  ) {
     throw new HttpError(404, "Booking not found.");
   }
   return record;
@@ -111,7 +148,10 @@ router.get(
   handle(async (req, res) => {
     const record = await loadAuthorizedRecord(req);
     if (record.booking_status !== "confirmed") {
-      throw new HttpError(409, "A ticket is only available for confirmed bookings.");
+      throw new HttpError(
+        409,
+        "A ticket is only available for confirmed bookings.",
+      );
     }
     const pdf = await renderTicketPdf(record);
     res.set({
@@ -137,8 +177,14 @@ router.post(
     );
 
     if (result.rows[0]) {
-      const seats = await db.query("SELECT seat_id FROM booking_seats WHERE booking_id = $1", [bookingId]);
-      await releaseSeatLocks(result.rows[0].trip_id, seats.rows.map((s) => s.seat_id));
+      const seats = await db.query(
+        "SELECT seat_id FROM booking_seats WHERE booking_id = $1",
+        [bookingId],
+      );
+      await releaseSeatLocks(
+        result.rows[0].trip_id,
+        seats.rows.map((s) => s.seat_id),
+      );
     }
     res.json({ success: true });
   }),
@@ -160,7 +206,10 @@ router.post(
 
     const lock = await acquireSeatLocks(tripId, seatIds, `user:${userId}`);
     if (!lock.success) {
-      throw new HttpError(409, "One of the selected seats was just taken by another passenger. Please choose different seats.");
+      throw new HttpError(
+        409,
+        "One of the selected seats was just taken by another passenger. Please choose different seats.",
+      );
     }
 
     try {
@@ -176,8 +225,14 @@ router.post(
         if (!trip || trip.status !== "open") {
           throw new HttpError(404, "This departure is no longer available.");
         }
-        if (Number(trip.minutes_to_departure) < brand.boarding.onlineSalesCutoffMinutes) {
-          throw new HttpError(409, "Online sales for this departure have closed. Please visit the terminal counter.");
+        if (
+          Number(trip.minutes_to_departure) <
+          brand.boarding.onlineSalesCutoffMinutes
+        ) {
+          throw new HttpError(
+            409,
+            "Online sales for this departure have closed. Please visit the terminal counter.",
+          );
         }
 
         const validSeats = await client.query(
@@ -185,7 +240,10 @@ router.post(
           [trip.bus_id, seatIds],
         );
         if (validSeats.rows.length !== seatIds.length) {
-          throw new HttpError(400, "The selected seats do not belong to this coach.");
+          throw new HttpError(
+            400,
+            "The selected seats do not belong to this coach.",
+          );
         }
 
         // A passenger changing their mind should not be blocked by their own earlier hold.
@@ -207,7 +265,10 @@ router.post(
           [tripId, seatIds, HOLD_MINUTES],
         );
         if (conflict.rows.length > 0) {
-          throw new HttpError(409, "One or more selected seats are no longer available. Please choose different seats.");
+          throw new HttpError(
+            409,
+            "One or more selected seats are no longer available. Please choose different seats.",
+          );
         }
 
         const profile = await client.query(
@@ -217,7 +278,8 @@ router.post(
         const contactEmail = isValidEmail(req.body?.contactEmail)
           ? req.body.contactEmail.trim().toLowerCase()
           : profile.rows[0]?.email || null;
-        const preference = profile.rows[0]?.discussion_preference || "no_preference";
+        const preference =
+          profile.rows[0]?.discussion_preference || "no_preference";
 
         const quote = quoteFare(trip.price_fcfa, passengers.length);
         const bookingRef = await generateBookingRef(client);
@@ -236,7 +298,9 @@ router.post(
             generateQrHash(),
             quote.totalAmount,
             lead.name,
-            String(req.body?.payerPhone ?? "").replace(/\D/g, "").slice(-12) || null,
+            String(req.body?.payerPhone ?? "")
+              .replace(/\D/g, "")
+              .slice(-12) || null,
             lead.idCardNumber,
             contactEmail,
           ],
@@ -248,7 +312,15 @@ router.post(
             `INSERT INTO booking_seats
                (booking_id, seat_id, passenger_name, passenger_age, passenger_gender, discussion_preference, id_card_number)
              VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [booking.id, passenger.seatId, passenger.name, passenger.age, passenger.gender, preference, passenger.idCardNumber],
+            [
+              booking.id,
+              passenger.seatId,
+              passenger.name,
+              passenger.age,
+              passenger.gender,
+              preference,
+              passenger.idCardNumber,
+            ],
           );
         }
 

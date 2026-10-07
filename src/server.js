@@ -8,7 +8,10 @@ import db from "./database/pg.js";
 import { runMigrations } from "./database/migrate.js";
 import "./services/redis.js";
 import "./workers/emailWorker.js";
-import { expireStaleBookings, reconcilePendingPayments } from "./services/paymentService.js";
+import {
+  expireStaleBookings,
+  reconcilePendingPayments,
+} from "./services/paymentService.js";
 
 import registration from "./auth/register.js";
 import userLogin from "./auth/login.js";
@@ -28,7 +31,11 @@ app.use(
   cors({
     origin(origin, callback) {
       // Non-browser callers (payment gateway, mobile apps) send no Origin header.
-      if (!origin || env.corsOrigins.includes(origin) || (!env.isProduction && /^https?:\/\/localhost(:\d+)?$/.test(origin))) {
+      if (
+        !origin ||
+        env.corsOrigins.includes(origin) ||
+        (!env.isProduction && /^https?:\/\/localhost(:\d+)?$/.test(origin))
+      ) {
         return callback(null, true);
       }
       return callback(null, false);
@@ -64,10 +71,17 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
   if (err.type === "entity.parse.failed") {
-    return res.status(400).json({ success: false, message: "Malformed request." });
+    return res
+      .status(400)
+      .json({ success: false, message: "Malformed request." });
   }
   console.error("[Server] Unhandled error:", err);
-  return res.status(500).json({ success: false, message: "Something went wrong. Please try again." });
+  return res
+    .status(500)
+    .json({
+      success: false,
+      message: "Something went wrong. Please try again.",
+    });
 });
 
 process.on("unhandledRejection", (reason) => {
@@ -82,12 +96,26 @@ async function start() {
   }
 
   const server = app.listen(env.port, () => {
-    console.log(`[Server] Listening on port ${env.port} (${env.isProduction ? "production" : "development"}).`);
+    console.log(
+      `[Server] Listening on port ${env.port} (${env.isProduction ? "production" : "development"}).`,
+    );
   });
 
   const timers = [
-    setInterval(() => expireStaleBookings().catch((err) => console.warn("[Jobs] Expiry failed:", err.message)), 60_000),
-    setInterval(() => reconcilePendingPayments().catch((err) => console.warn("[Jobs] Reconcile failed:", err.message)), 45_000),
+    setInterval(
+      () =>
+        expireStaleBookings().catch((err) =>
+          console.warn("[Jobs] Expiry failed:", err.message),
+        ),
+      60_000,
+    ),
+    setInterval(
+      () =>
+        reconcilePendingPayments().catch((err) =>
+          console.warn("[Jobs] Reconcile failed:", err.message),
+        ),
+      45_000,
+    ),
   ];
 
   const shutdown = () => {

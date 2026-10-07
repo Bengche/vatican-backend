@@ -1,9 +1,17 @@
 import { brand } from "../config/brand.js";
 import { env } from "../config/env.js";
-import { escapeHtml as esc, formatDate, formatTime, formatXAF, formatDateTime, shiftLabel } from "../utils/format.js";
+import {
+  escapeHtml as esc,
+  formatDate,
+  formatTime,
+  formatXAF,
+  formatDateTime,
+  shiftLabel,
+} from "../utils/format.js";
 
 const c = brand.colors;
-const FONT = "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif";
+const FONT =
+  "'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif";
 
 export const qrImageUrl = (hash) =>
   env.apiPublicUrl ? `${env.apiPublicUrl}/api/verify/qr/${hash}.png` : null;
@@ -56,7 +64,7 @@ function layout({ preheader, label, content, recipient }) {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${c.surface}">
     <tr>
       <td align="center" style="padding:28px 12px;">
-        <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border-radius:18px;overflow:hidden;border:1px solid ${c.line};">
+        <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid ${c.line};">
 
           <tr>
             <td bgcolor="${c.primary}" class="px" style="background:${c.primary};padding:22px 32px;">
@@ -65,10 +73,10 @@ function layout({ preheader, label, content, recipient }) {
                   <td valign="middle">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                       <tr>
-                        <td width="40" height="40" align="center" valign="middle" bgcolor="${c.accent}" style="background:${c.accent};border-radius:10px;font-family:${FONT};font-size:15px;font-weight:800;color:${c.primaryDark};">${esc(brand.monogram)}</td>
-                        <td style="padding-left:12px;font-family:${FONT};">
-                          <div style="font-size:16px;font-weight:800;letter-spacing:0.04em;text-transform:uppercase;color:#ffffff;">${esc(brand.name)}</div>
-                          <div style="font-size:11px;color:#9fb0cc;letter-spacing:0.04em;">${esc(brand.tagline)}</div>
+                        <td width="42" height="42" align="center" valign="middle" bgcolor="${c.primaryDark}" style="background:${c.primaryDark};border:1px solid ${c.accent};border-radius:6px;font-family:Georgia,'Times New Roman',serif;font-size:17px;font-weight:bold;color:${c.accent};letter-spacing:0.5px;">${esc(brand.monogram)}</td>
+                        <td style="padding-left:14px;font-family:${FONT};">
+                          <div style="font-size:13px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:#ffffff;">${esc(brand.name)}</div>
+                          <div style="margin-top:6px;font-size:9.5px;font-weight:600;color:#9fb0cc;letter-spacing:0.28em;text-transform:uppercase;">${esc(brand.descriptor)}</div>
                         </td>
                       </tr>
                     </table>
@@ -163,7 +171,10 @@ function summaryRow(label, value, { strong = false } = {}) {
 
 export function buildReceiptEmail(record) {
   const { breakdown } = record;
-  const firstName = String(record.contactName || "").trim().split(/\s+/)[0] || "Traveller";
+  const firstName =
+    String(record.contactName || "")
+      .trim()
+      .split(/\s+/)[0] || "Traveller";
   const qrUrl = qrImageUrl(record.qr_code_hash);
   const ticketUrl = verifyUrl(record.qr_code_hash);
 
@@ -192,7 +203,9 @@ export function buildReceiptEmail(record) {
     .join("");
 
   const paymentChannel =
-    record.payment_method === "cash_counter" ? "Paid at agency counter" : "Mobile Money";
+    record.payment_method === "cash_counter"
+      ? "Paid at agency counter"
+      : "Mobile Money";
 
   const content = `
   <tr>
@@ -282,7 +295,14 @@ export function buildReceiptEmail(record) {
   });
 }
 
-export function buildBroadcastEmail({ toName, subject, messageBody, trip, qrCodeHash, recipient }) {
+export function buildBroadcastEmail({
+  toName,
+  subject,
+  messageBody,
+  trip,
+  qrCodeHash,
+  recipient,
+}) {
   const safeMessage = esc(messageBody).replace(/\r?\n/g, "<br>");
 
   const tripBlock = trip

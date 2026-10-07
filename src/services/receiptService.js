@@ -76,7 +76,10 @@ function withBreakdown(row) {
 }
 
 export async function getBookingRecord(bookingId, runner = db) {
-  const { rows } = await runner.query(`${RECORD_SELECT} WHERE b.id = $1 LIMIT 1`, [bookingId]);
+  const { rows } = await runner.query(
+    `${RECORD_SELECT} WHERE b.id = $1 LIMIT 1`,
+    [bookingId],
+  );
   return rows[0] ? withBreakdown(rows[0]) : null;
 }
 
