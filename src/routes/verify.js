@@ -29,6 +29,8 @@ router.get(
          b.booking_ref,
          b.status AS booking_status,
          b.created_at AS booked_at,
+         b.is_checked_in AS boarded,
+         b.checked_in_at AS boarded_at,
          b.total_amount_fcfa,
          p1.city AS origin_city,
          p1.park_name AS origin,

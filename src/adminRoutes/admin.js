@@ -1,7 +1,9 @@
 import express from "express";
 import db, { withTransaction } from "../database/pg.js";
 import { brand } from "../config/brand.js";
-import { requireAdmin } from "../middleware/auth.js";
+import { requireAdmin, requireCounter } from "../middleware/auth.js";
+import { cancelBooking } from "../services/refundService.js";
+import { buildLayout, insertCells } from "../services/seatLayout.js";
 import {
   generateBookingRef,
   generateQrHash,
@@ -12,7 +14,16 @@ import { HttpError, handle } from "../utils/httpError.js";
 import { toInternationalPhone, isValidEmail } from "../utils/format.js";
 
 const router = express.Router();
-router.use("/admin", requireAdmin);
+// Counter staff may list departures and issue cash tickets; everything else here is administrator-only.
+const COUNTER_ROUTES = new Set([
+  "GET /api/admin/trips",
+  "POST /api/admin/counter-booking",
+]);
+router.use("/admin", (req, res, next) =>
+  (COUNTER_ROUTES.has(`${req.method} ${req.baseUrl}${req.path}`)
+    ? requireCounter
+    : requireAdmin)(req, res, next),
+);
 
 const HOLD_MINUTES = brand.boarding.seatHoldMinutes;
 const isId = (value) => /^\d{1,18}$/.test(String(value));
@@ -147,11 +158,40 @@ router.post(
   }, "We could not publish this departure."),
 );
 
-/** PATCH /api/admin/trips/:id/cancel - withdraw a departure that has no paid passengers */
+/** PATCH /api/admin/trips/:id/cancel - withdraw a departure; `refundAll` first cancels and fully refunds every paid booking */
 router.patch(
   "/admin/trips/:id/cancel",
   handle(async (req, res) => {
     const tripId = needId(req.params.id);
+
+    let refunded = 0;
+    if (req.body?.refundAll === true) {
+      const { rows: paid } = await db.query(
+        "SELECT id, total_amount_fcfa FROM bookings WHERE trip_id = $1 AND status = 'confirmed' ORDER BY id",
+        [tripId],
+      );
+      let failed = 0;
+      for (const booking of paid) {
+        try {
+          await cancelBooking({
+            bookingId: booking.id,
+            adminId: req.user.id,
+            reason: "Departure cancelled by the operator",
+            refundAmount: booking.total_amount_fcfa,
+          });
+          refunded += 1;
+        } catch (error) {
+          failed += 1;
+          console.error(`[Trip cancel] Booking ${booking.id}:`, error.message);
+        }
+      }
+      if (failed > 0) {
+        throw new HttpError(
+          409,
+          `${refunded} booking(s) were cancelled but ${failed} could not be. Open Bookings to finish them, then withdraw the departure again.`,
+        );
+      }
+    }
 
     await withTransaction(async (client) => {
       await client.query("SELECT id FROM trips WHERE id = $1 FOR UPDATE", [
@@ -164,7 +204,7 @@ router.patch(
       if (paid.rows.length > 0) {
         throw new HttpError(
           409,
-          "This departure already has confirmed passengers. Notify them before changing the schedule.",
+          "This departure has confirmed passengers. Cancel and refund them first.",
         );
       }
       await client.query(
@@ -179,7 +219,12 @@ router.patch(
         throw new HttpError(404, "Departure not found or already closed.");
     });
 
-    res.json({ success: true, message: "Departure withdrawn." });
+    res.json({
+      success: true,
+      message: refunded
+        ? `Departure withdrawn. ${refunded} booking(s) refunded in full.`
+        : "Departure withdrawn.",
+    });
   }),
 );
 
@@ -269,13 +314,11 @@ router.post(
       return created.rows[0];
     });
 
-    res
-      .status(201)
-      .json({
-        success: true,
-        message: "Ticket issued and seats confirmed.",
-        booking,
-      });
+    res.status(201).json({
+      success: true,
+      message: "Ticket issued and seats confirmed.",
+      booking,
+    });
   }, "We could not issue this ticket."),
 );
 
@@ -494,27 +537,7 @@ router.post(
       throw new HttpError(400, "Seat capacity must be between 5 and 100.");
     }
 
-    // Layout: five seats per row split by a walkway in the third column.
-    const labels = [];
-    const rowNums = [];
-    const colNums = [];
-    const aisles = [];
-    const columns = 6;
-    const aisleColumn = 3;
-    const rows = Math.ceil(capacity / 5);
-    let seatNumber = 1;
-
-    for (let row = 1; row <= rows; row += 1) {
-      for (let col = 1; col <= columns; col += 1) {
-        if (seatNumber > capacity) break;
-        const isAisle = col === aisleColumn;
-        labels.push(isAisle ? "AISLE" : `S${seatNumber}`);
-        rowNums.push(row);
-        colNums.push(col);
-        aisles.push(isAisle);
-        if (!isAisle) seatNumber += 1;
-      }
-    }
+    const cells = buildLayout(capacity);
 
     try {
       const bus = await withTransaction(async (client) => {
@@ -523,21 +546,14 @@ router.post(
            VALUES ($1, $2, $3, $4, true) RETURNING id, bus_number, bus_type, total_seats`,
           [parkId, busNumber, busType, capacity],
         );
-        await client.query(
-          `INSERT INTO bus_seats (bus_id, seat_label, row_num, col_num, is_aisle)
-           SELECT $1, s.label, s.row_num, s.col_num, s.is_aisle
-             FROM unnest($2::text[], $3::int[], $4::int[], $5::boolean[]) AS s(label, row_num, col_num, is_aisle)`,
-          [created.rows[0].id, labels, rowNums, colNums, aisles],
-        );
+        await insertCells(client, created.rows[0].id, cells);
         return created.rows[0];
       });
-      res
-        .status(201)
-        .json({
-          success: true,
-          message: `Bus ${bus.bus_number} registered with ${capacity} seats.`,
-          bus,
-        });
+      res.status(201).json({
+        success: true,
+        message: `Bus ${bus.bus_number} registered with ${capacity} seats.`,
+        bus,
+      });
     } catch (error) {
       if (error.code === "23505")
         throw new HttpError(

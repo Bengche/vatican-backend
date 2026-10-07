@@ -66,6 +66,8 @@ export const env = {
   },
   redisUrl: normaliseRedisUrl(process.env.REDIS_URL),
   sendgridApiKey: process.env.SENDGRID_API_KEY || "",
+  alertEmail: process.env.ALERT_EMAIL || "",
+  sentryDsn: process.env.SENTRY_DSN || "",
   campay: {
     baseUrl:
       stripSlash(process.env.CAMPAY_BASE_URL) || "https://www.campay.net/api",

@@ -5,6 +5,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
+    "relayout": "node src/database/relayout.js",
     "dev": "nodemon src/server.js"
   },
   "type": "module",

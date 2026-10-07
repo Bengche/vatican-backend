@@ -39,6 +39,13 @@ export const brand = {
     success: "#047857",
   },
 
+  // Share of the base fare returned on a cancellation. Service, terminal and gateway fees are never refunded.
+  refundPolicy: {
+    fullRefundHours: 24,
+    partialRefundHours: 6,
+    partialPercent: 50,
+  },
+
   currency: "XAF",
   timezone: "Africa/Douala",
 

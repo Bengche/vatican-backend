@@ -1,5 +1,6 @@
 import pg from "pg";
 import { env } from "../config/env.js";
+import { brand } from "../config/brand.js";
 
 // Keep DATE columns as plain 'YYYY-MM-DD' strings so they never shift across time zones.
 pg.types.setTypeParser(1082, (value) => value);
@@ -9,6 +10,8 @@ const pool = new pg.Pool({
   max: 15,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
+  // Every session uses Cameroon time so "today", hold expiry and reports agree in any environment.
+  options: `-c timezone=${brand.timezone}`,
 });
 
 pool.on("error", (err) => {

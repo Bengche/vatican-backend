@@ -1,3 +1,6 @@
+import { alertAdmin } from "../services/alerts.js";
+import { captureError } from "../services/monitoring.js";
+
 export class HttpError extends Error {
   constructor(status, message) {
     super(message);
@@ -18,6 +21,11 @@ export const handle =
           .json({ success: false, message: error.message });
       }
       console.error(`[${req.method} ${req.originalUrl}]`, error);
+      captureError(error);
+      alertAdmin(
+        `Server error on ${req.method} ${req.path}`,
+        error.stack || String(error),
+      );
       return res.status(500).json({ success: false, message: fallbackMessage });
     }
   };

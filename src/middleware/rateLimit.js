@@ -32,3 +32,15 @@ export const webhookLimiter = limiter({
   limit: 120,
   message: "Too many requests.",
 });
+
+export const forgotPasswordLimiter = limiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 6,
+  message: "Too many reset requests. Please try again later.",
+});
+
+export const resetPasswordLimiter = limiter({
+  windowMs: 60 * 60 * 1000,
+  limit: 15,
+  message: "Too many attempts. Please request a new reset link.",
+});

@@ -351,3 +351,69 @@ export function buildBroadcastEmail({
     recipient,
   });
 }
+
+function textBlock({ eyebrow, title, intro }) {
+  return `
+  <tr>
+    <td class="px" style="padding:36px 32px 6px 32px;font-family:${FONT};">
+      <div style="font-size:11px;font-weight:800;letter-spacing:0.16em;text-transform:uppercase;color:#b45309;">${esc(eyebrow)}</div>
+      <h1 style="margin:8px 0 12px 0;font-size:24px;line-height:1.3;color:${c.text};font-weight:800;">${esc(title)}</h1>
+      <p style="margin:0;font-size:15px;line-height:1.65;color:${c.muted};">${intro}</p>
+    </td>
+  </tr>`;
+}
+
+export function buildPasswordResetEmail({ name, url, minutes, recipient }) {
+  const content = `
+  ${textBlock({ eyebrow: "Account security", title: "Reset your password", intro: `Hello ${esc(name || "there")}, we received a request to reset the password for your ${esc(brand.name)} account. The link below is valid for ${minutes} minutes and can be used once.` })}
+  <tr><td class="px" align="center" style="padding:24px 32px 6px 32px;">${button(url, "Choose a new password")}</td></tr>
+  <tr>
+    <td class="px" style="padding:18px 32px 34px 32px;font-family:${FONT};font-size:13px;line-height:1.7;color:${c.muted};">
+      If the button does not work, copy this address into your browser:<br>
+      <span style="word-break:break-all;color:${c.primary};">${esc(url)}</span><br><br>
+      If you did not ask for this, you can ignore this email and your password will stay the same.
+    </td>
+  </tr>`;
+  return layout({ preheader: "Use this link to choose a new password.", label: "Account Security", content, recipient });
+}
+
+export function buildPasswordChangedEmail({ name, recipient }) {
+  const content = `
+  ${textBlock({ eyebrow: "Account security", title: "Your password was changed", intro: `Hello ${esc(name || "there")}, the password for your ${esc(brand.name)} account has just been changed.` })}
+  <tr>
+    <td class="px" style="padding:18px 32px 34px 32px;font-family:${FONT};font-size:14px;line-height:1.7;color:${c.muted};">
+      If this was you, no further action is needed. If it was not, reset your password immediately and contact us on
+      <a href="tel:+${esc(brand.support.whatsapp)}" style="color:${c.primary};font-weight:700;text-decoration:none;">${esc(brand.support.phone)}</a>.
+    </td>
+  </tr>`;
+  return layout({ preheader: "Your password was changed.", label: "Account Security", content, recipient });
+}
+
+export function buildCancellationEmail({ record, reason, refund, recipient }) {
+  const refundLine = !refund
+    ? "No refund applies to this cancellation under our refund policy."
+    : refund.method === "cash"
+      ? `${formatXAF(refund.amount)} is refunded in cash at the terminal counter.`
+      : refund.status === "sent"
+        ? `${formatXAF(refund.amount)} has been sent back to your Mobile Money number${refund.phone ? ` ending ${String(refund.phone).slice(-3)}` : ""}.`
+        : `${formatXAF(refund.amount)} is being returned to your Mobile Money number. We will contact you if there is any delay.`;
+
+  const content = `
+  ${textBlock({ eyebrow: "Booking update", title: "Your booking was cancelled", intro: `Booking <strong style="color:${c.text};">${esc(record.booking_ref)}</strong> for ${esc(record.origin_city)} to ${esc(record.destination_city)} on ${esc(formatDate(record.travel_date))} at ${esc(formatTime(record.departure_time))} has been cancelled.` })}
+  <tr>
+    <td class="px" style="padding:16px 32px 4px 32px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${c.accentSoft};border-left:4px solid ${c.accent};border-radius:10px;">
+        <tr><td style="padding:16px 20px;font-family:${FONT};font-size:14px;line-height:1.7;color:${c.text};">
+          <strong>Reason:</strong> ${esc(reason)}<br>
+          <strong>Refund:</strong> ${esc(refundLine)}
+        </td></tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td class="px" style="padding:22px 32px 34px 32px;font-family:${FONT};font-size:13px;line-height:1.7;color:${c.muted};">
+      The ticket for this booking is no longer valid. You can book another trip at any time on ${esc(brand.website)}.
+    </td>
+  </tr>`;
+  return layout({ preheader: `Booking ${record.booking_ref} was cancelled.`, label: "Booking Update", content, recipient });
+}

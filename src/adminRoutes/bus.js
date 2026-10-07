@@ -38,6 +38,7 @@ router.get(
          bs.row_num AS "rowNum",
          bs.col_num AS "colNum",
          bs.is_aisle AS "isAisle",
+         bs.is_window AS "isWindow",
          (bs.is_aisle = false AND booked.seat_id IS NOT NULL) AS "isBooked",
          COALESCE(booked.is_counter_booking, false) AS "isCounterBooking",
          booked.passenger_gender AS "passengerGender",

@@ -15,12 +15,19 @@ import {
 
 import registration from "./auth/register.js";
 import userLogin from "./auth/login.js";
+import passwordReset from "./auth/password.js";
 import catalog from "./adminRoutes/bus.js";
 import trips from "./adminRoutes/trips.js";
 import bookings from "./routes/bookings.js";
 import payments from "./routes/payments.js";
 import verification from "./routes/verify.js";
 import admin from "./adminRoutes/admin.js";
+import staff from "./adminRoutes/staff.js";
+import operations from "./adminRoutes/operations.js";
+import { alertAdmin } from "./services/alerts.js";
+import { initMonitoring, captureError } from "./services/monitoring.js";
+
+initMonitoring();
 
 const app = express();
 
@@ -57,11 +64,14 @@ app.get("/health", async (req, res) => {
 
 app.use("/api", registration);
 app.use("/api", userLogin);
+app.use("/api", passwordReset);
 app.use("/api", catalog);
 app.use("/api", trips);
 app.use("/api", bookings);
 app.use("/api", payments);
 app.use("/api", verification);
+app.use("/api", staff);
+app.use("/api", operations);
 app.use("/api", admin);
 
 app.use((req, res) => {
@@ -76,6 +86,8 @@ app.use((err, req, res, next) => {
       .json({ success: false, message: "Malformed request." });
   }
   console.error("[Server] Unhandled error:", err);
+  captureError(err);
+  alertAdmin("Unhandled server error", err.stack || String(err));
   return res
     .status(500)
     .json({
@@ -86,6 +98,8 @@ app.use((err, req, res, next) => {
 
 process.on("unhandledRejection", (reason) => {
   console.error("[Server] Unhandled rejection:", reason);
+  captureError(reason);
+  alertAdmin("Unhandled promise rejection", reason?.stack || String(reason));
 });
 
 async function start() {

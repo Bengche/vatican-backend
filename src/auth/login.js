@@ -31,7 +31,7 @@ router.post(
     const phone = identifier.includes("@") ? null : toNationalPhone(identifier);
 
     const { rows } = await db.query(
-      `SELECT id, full_name, email, phone_number, password_hash, role
+      `SELECT id, full_name, email, phone_number, password_hash, role, is_active
          FROM users
         WHERE LOWER(email) = LOWER($1) OR phone_number = $2
         LIMIT 1`,
@@ -50,6 +50,10 @@ router.post(
           success: false,
           message: "Incorrect phone number, email or password.",
         });
+    }
+
+    if (user.is_active === false) {
+      return res.status(403).json({ success: false, message: "This account has been deactivated. Please contact support." });
     }
 
     const token = jwt.sign(

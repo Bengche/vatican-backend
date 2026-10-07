@@ -1,11 +1,14 @@
 import db, { withTransaction } from "../database/pg.js";
 import { brand } from "../config/brand.js";
 import { env } from "../config/env.js";
-import { collectPayment, getTransaction, sendPayout } from "./campay.js";
+import { collectPayment, getTransaction } from "./campay.js";
 import { releaseSeatLocks } from "./seatLockService.js";
 import { queueTicketReceiptEmail } from "./queueService.js";
 import { getBookingRecord } from "./receiptService.js";
 import { toInternationalPhone } from "../utils/format.js";
+import { createPayout, sendPayoutById } from "./payoutService.js";
+import { refundUnmatchedPayment } from "./refundService.js";
+import { alertAdmin } from "./alerts.js";
 
 const HOLD_MINUTES = brand.boarding.seatHoldMinutes;
 
@@ -40,45 +43,30 @@ async function runPayouts(record) {
   const agencyAmount =
     Number(record.unit_price) * seatCount + terminalFeePerSeat * seatCount;
   const platformAmount = serviceFeePerSeat * seatCount;
-  const label = `${record.booking_ref} (${seatCount} seat${seatCount > 1 ? "s" : ""})`;
 
   const payouts = [
+    { kind: "agency", phone: record.agency_momo, amount: agencyAmount },
     {
-      name: "agency",
-      phone: record.agency_momo,
-      amount: agencyAmount,
-      ref: `AGENCY-${record.booking_id}`,
-    },
-    {
-      name: "platform",
+      kind: "platform",
       phone: env.platformPayoutNumber,
       amount: platformAmount,
-      ref: `PLATFORM-${record.booking_id}`,
     },
   ];
 
   for (const payout of payouts) {
-    const phone = toInternationalPhone(payout.phone);
-    if (!phone || payout.amount <= 0) {
-      console.warn(
-        `[Payout] ${payout.name} payout skipped for ${label}: no valid number configured.`,
-      );
-      continue;
-    }
+    if (payout.amount <= 0) continue;
     try {
-      const result = await sendPayout({
+      const row = await createPayout({
+        bookingId: record.booking_id,
+        kind: payout.kind,
+        phone: payout.phone,
         amount: payout.amount,
-        phone,
-        description: `Ticket revenue ${label}`,
-        externalReference: payout.ref,
       });
-      console.log(
-        `[Payout] ${payout.name} ${payout.amount} XAF for ${label}. Ref ${result.reference}`,
-      );
+      await sendPayoutById(row.id);
     } catch (error) {
-      console.error(
-        `[Payout] ${payout.name} payout FAILED for ${label}:`,
-        error.details || error.message,
+      await alertAdmin(
+        `Could not record ${payout.kind} payout for ${record.booking_ref}`,
+        error.message,
       );
     }
   }
@@ -161,6 +149,10 @@ export async function settlePayment(reference) {
     console.error(
       `[Payments] Amount mismatch on ${reference}: received ${remote.amount}, expected ${payment.amount_fcfa}.`,
     );
+    await alertAdmin(
+      `Payment amount mismatch on ${reference}`,
+      `Received ${remote.amount}, expected ${payment.amount_fcfa}.`,
+    );
     return { outcome: "amount_mismatch" };
   }
 
@@ -206,8 +198,11 @@ export async function settlePayment(reference) {
   });
 
   if (result.refundRequired) {
-    console.error(
-      `[Payments] REFUND REQUIRED: payment ${reference} succeeded but seats were released to another passenger (booking ${payment.booking_id}).`,
+    await refundUnmatchedPayment(payment).catch((err) =>
+      alertAdmin(
+        `REFUND REQUIRED and automatic refund failed for payment ${reference}`,
+        err.message,
+      ),
     );
     return { outcome: "refund_required" };
   }

@@ -118,6 +118,60 @@ router.get(
   }),
 );
 
+const slugify = (text) =>
+  String(text).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+async function loadRoutePairs() {
+  const { rows } = await db.query(
+    `SELECT p1.city AS "fromCity", p2.city AS "toCity",
+            (array_agg(r.origin_park_id ORDER BY (t.id IS NULL), r.id))[1] AS "fromParkId",
+            (array_agg(r.destination_park_id ORDER BY (t.id IS NULL), r.id))[1] AS "toParkId",
+            MIN(t.price_fcfa) FILTER (WHERE t.status = 'open' AND t.travel_date >= CURRENT_DATE) AS "minPrice",
+            COUNT(t.id) FILTER (WHERE t.status = 'open' AND t.travel_date >= CURRENT_DATE) AS "upcomingTrips",
+            array_agg(DISTINCT p1.park_name) AS "fromParks",
+            array_agg(DISTINCT p2.park_name) AS "toParks"
+       FROM routes r
+       JOIN agencies_parks p1 ON r.origin_park_id = p1.id
+       JOIN agencies_parks p2 ON r.destination_park_id = p2.id
+       LEFT JOIN trips t ON t.route_id = r.id
+      WHERE p1.is_active IS NOT FALSE AND p2.is_active IS NOT FALSE AND p1.city <> p2.city
+      GROUP BY p1.city, p2.city
+      ORDER BY p1.city, p2.city`,
+  );
+  return rows.map((row) => ({
+    ...row,
+    slug: `${slugify(row.fromCity)}-to-${slugify(row.toCity)}`,
+    minPrice: row.minPrice === null ? null : Number(row.minPrice),
+    upcomingTrips: Number(row.upcomingTrips),
+  }));
+}
+
+/** GET /api/route-pages - every city pair we serve (used for search-engine route pages) */
+router.get(
+  "/route-pages",
+  handle(async (req, res) => {
+    res.json({ success: true, routes: await loadRoutePairs() });
+  }),
+);
+
+/** GET /api/route-pages/:slug - one city pair with its next departures */
+router.get(
+  "/route-pages/:slug",
+  handle(async (req, res) => {
+    const route = (await loadRoutePairs()).find((r) => r.slug === req.params.slug);
+    if (!route) throw new HttpError(404, "Route not found.");
+
+    const { rows } = await db.query(
+      `SELECT ${TRIP_COLUMNS}, ${sql(BOOKED_SEATS, 1, 2, 3)} AS "bookedSeats"
+       ${TRIP_JOINS}
+       WHERE ${sql(ON_SALE, 1, 2, 3)} AND p1.city = $4 AND p2.city = $5
+       ORDER BY t.travel_date ASC, t.departure_time ASC
+       LIMIT 8`,
+      [brand.timezone, CUTOFF_MINUTES, HOLD_MINUTES, route.fromCity, route.toCity],
+    );
+    res.json({ success: true, route, trips: rows.map(withAvailability) });
+  }),
+);
 /** GET /api/trips/:id/quote?seats=2 - authoritative fare breakdown */
 router.get(
   "/trips/:id/quote",

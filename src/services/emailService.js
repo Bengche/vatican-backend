@@ -1,7 +1,7 @@
 import { brand } from "../config/brand.js";
 import { env } from "../config/env.js";
 import { getBookingRecord } from "./receiptService.js";
-import { buildReceiptEmail, buildBroadcastEmail } from "./emailTemplates.js";
+import { buildReceiptEmail, buildBroadcastEmail, buildPasswordResetEmail, buildPasswordChangedEmail, buildCancellationEmail } from "./emailTemplates.js";
 import { renderTicketPdf } from "./ticketPdf.js";
 
 const SENDGRID_URL = "https://api.sendgrid.com/v3/mail/send";
@@ -98,5 +98,46 @@ export async function sendBroadcastEmail({ toEmail, toName, subject, messageBody
     subject: `${brand.name}: ${subject}`,
     html: buildBroadcastEmail({ toName, subject, messageBody, trip, qrCodeHash, recipient: toEmail }),
     category: "trip-update",
+  });
+}
+
+export async function sendPasswordResetEmail({ to, name, url, minutes }) {
+  return sendEmail({
+    to: { email: to, name },
+    subject: `Reset your ${brand.name} password`,
+    html: buildPasswordResetEmail({ name, url, minutes, recipient: to }),
+    category: "password-reset",
+  });
+}
+
+export async function sendPasswordChangedEmail({ to, name }) {
+  return sendEmail({
+    to: { email: to, name },
+    subject: `Your ${brand.name} password was changed`,
+    html: buildPasswordChangedEmail({ name, recipient: to }),
+    category: "password-changed",
+  });
+}
+
+/** Tells the passenger a booking was cancelled and what happens to their money. */
+export async function sendCancellationEmail({ bookingId, refund, reason }) {
+  const record = await getBookingRecord(bookingId);
+  if (!record?.recipientEmail) return null;
+
+  return sendEmail({
+    to: { email: record.recipientEmail, name: record.contactName },
+    subject: `Booking ${record.booking_ref} cancelled`,
+    html: buildCancellationEmail({ record, reason, refund, recipient: record.recipientEmail }),
+    category: "booking-cancelled",
+  });
+}
+
+export async function sendAlertEmail(subject, details) {
+  const escaped = String(details).replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[ch]);
+  return sendEmail({
+    to: { email: env.alertEmail },
+    subject: `[${brand.name}] ${subject}`,
+    html: `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#0f172a;"><strong>${subject.replace(/[&<>]/g, "")}</strong><pre style="white-space:pre-wrap;">${escaped}</pre></div>`,
+    category: "ops-alert",
   });
 }
