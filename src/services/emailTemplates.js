@@ -73,7 +73,7 @@ function layout({ preheader, label, content, recipient }) {
                   <td valign="middle">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                       <tr>
-                        <td width="42" height="42" align="center" valign="middle" bgcolor="${c.primaryDark}" style="background:${c.primaryDark};border:1px solid ${c.accent};border-radius:6px;font-family:Georgia,'Times New Roman',serif;font-size:17px;font-weight:bold;color:${c.accent};letter-spacing:0.5px;">${esc(brand.monogram)}</td>
+                        <td width="46" valign="middle"><img src="${esc(env.frontendUrl)}/logo-mark.png" width="46" height="42" alt="${esc(brand.monogram)}" style="display:block;border:0;"></td>
                         <td style="padding-left:14px;font-family:${FONT};">
                           <div style="font-size:13px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:#ffffff;">${esc(brand.name)}</div>
                           <div style="margin-top:6px;font-size:9.5px;font-weight:600;color:#9fb0cc;letter-spacing:0.28em;text-transform:uppercase;">${esc(brand.descriptor)}</div>

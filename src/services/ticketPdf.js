@@ -1,3 +1,4 @@
+import { fileURLToPath } from "url";
 import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
 import { brand } from "../config/brand.js";
@@ -11,6 +12,7 @@ import {
 } from "../utils/format.js";
 
 const C = brand.colors;
+const LOGO_PATH = fileURLToPath(new URL("../assets/logo-mark.png", import.meta.url));
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
 const MARGIN = 48;
@@ -100,24 +102,12 @@ export async function renderTicketPdf(record) {
   // Header band
   doc.roundedRect(24, 24, PAGE_W - 48, 88, 14).fill(C.primary);
   doc.rect(24, 70, PAGE_W - 48, 42).fill(C.primary);
-  doc
-    .roundedRect(MARGIN, 46, 44, 44, 7)
-    .lineWidth(1.2)
-    .fillAndStroke(C.primaryDark, C.accent);
-  doc
-    .font("Times-Bold")
-    .fontSize(19)
-    .fillColor(C.accent)
-    .text(brand.monogram, MARGIN, 60, {
-      width: 44,
-      align: "center",
-      lineBreak: false,
-    });
+  doc.image(LOGO_PATH, MARGIN, 43, { height: 48 });
   doc
     .font("Helvetica-Bold")
     .fontSize(14)
     .fillColor("#ffffff")
-    .text(brand.name.toUpperCase(), MARGIN + 58, 51, {
+    .text(brand.name.toUpperCase(), MARGIN + 64, 51, {
       characterSpacing: 2.6,
       lineBreak: false,
     });
@@ -125,7 +115,7 @@ export async function renderTicketPdf(record) {
     .font("Helvetica")
     .fontSize(7.5)
     .fillColor("#9fb0cc")
-    .text(brand.descriptor.toUpperCase(), MARGIN + 58, 72, {
+    .text(brand.descriptor.toUpperCase(), MARGIN + 64, 72, {
       characterSpacing: 2.4,
       lineBreak: false,
     });
