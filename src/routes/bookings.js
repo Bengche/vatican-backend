@@ -242,7 +242,7 @@ router.post(
         if (validSeats.rows.length !== seatIds.length) {
           throw new HttpError(
             400,
-            "The selected seats do not belong to this coach.",
+            "The selected seats do not belong to this bus.",
           );
         }
 

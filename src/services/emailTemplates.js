@@ -143,7 +143,7 @@ function tripCard(trip) {
             <td class="stack stack-gap" valign="top" width="50%" style="padding-bottom:16px;">${field("Departure", `${esc(formatTime(trip.departureTime))} <span style="font-weight:600;color:${c.muted};font-size:12px;">${esc(shiftLabel(trip.travelShift))}</span>`)}</td>
           </tr>
           <tr>
-            <td class="stack stack-gap" valign="top" width="50%" style="padding-bottom:16px;">${field("Coach", `${esc(trip.busNumber)} <span style="font-weight:600;color:${c.muted};font-size:12px;">${esc(trip.busType || "")}</span>`)}</td>
+            <td class="stack stack-gap" valign="top" width="50%" style="padding-bottom:16px;">${field("Bus", `${esc(trip.busNumber)} <span style="font-weight:600;color:${c.muted};font-size:12px;">${esc(trip.busType || "")}</span>`)}</td>
             <td class="stack stack-gap" valign="top" width="50%" style="padding-bottom:16px;">${field("Seat(s)", esc(trip.seatLabels), { color: c.success })}</td>
           </tr>
         </table>

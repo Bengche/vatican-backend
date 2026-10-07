@@ -248,7 +248,7 @@ export async function renderTicketPdf(record) {
       `${formatTime(record.departure_time)}  ${shiftLabel(record.travel_shift)}`,
     ],
     [
-      "Coach",
+      "Bus",
       `${record.bus_number}${record.bus_type ? ` (${record.bus_type})` : ""}`,
     ],
     ["Seat(s)", seatLabels],

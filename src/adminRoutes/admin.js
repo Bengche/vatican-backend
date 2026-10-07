@@ -62,7 +62,7 @@ router.post(
       req.body?.destinationParkId,
       "Select a destination terminal.",
     );
-    const busId = needId(req.body?.busId, "Select a coach.");
+    const busId = needId(req.body?.busId, "Select a bus.");
     const departureDate = String(req.body?.departureDate ?? "");
     const departureTime = String(req.body?.departureTime ?? "");
     const fare = Number.parseInt(req.body?.farePrice, 10);
@@ -96,11 +96,11 @@ router.post(
         "SELECT is_active FROM buses WHERE id = $1",
         [busId],
       );
-      if (!bus.rows[0]) throw new HttpError(404, "Coach not found.");
+      if (!bus.rows[0]) throw new HttpError(404, "Bus not found.");
       if (!bus.rows[0].is_active)
         throw new HttpError(
           409,
-          "This coach is not operational and cannot be scheduled.",
+          "This bus is not operational and cannot be scheduled.",
         );
 
       const existing = await client.query(
@@ -123,7 +123,7 @@ router.post(
       if (duplicate.rows.length > 0)
         throw new HttpError(
           409,
-          "This coach already has a departure at that date and time.",
+          "This bus already has a departure at that date and time.",
         );
 
       const inserted = await client.query(
@@ -136,7 +136,7 @@ router.post(
       if (error.code === "23503")
         throw new HttpError(
           400,
-          "The selected terminal or coach does not exist.",
+          "The selected terminal or bus does not exist.",
         );
       throw error;
     });
@@ -206,7 +206,7 @@ router.post(
       if (!trip || trip.status !== "open")
         throw new HttpError(404, "This departure is not available.");
       if (Number(trip.minutes_to_departure) < 0)
-        throw new HttpError(409, "This coach has already departed.");
+        throw new HttpError(409, "This bus has already departed.");
 
       const validSeats = await client.query(
         "SELECT id FROM bus_seats WHERE bus_id = $1 AND id = ANY($2::bigint[]) AND is_aisle = false",
@@ -215,7 +215,7 @@ router.post(
       if (validSeats.rows.length !== seatIds.length)
         throw new HttpError(
           400,
-          "The selected seats do not belong to this coach.",
+          "The selected seats do not belong to this bus.",
         );
 
       const conflict = await client.query(
@@ -485,7 +485,7 @@ router.post(
     const capacity = Number.parseInt(req.body?.totalSeats, 10);
 
     if (busNumber.length < 3 || busNumber.length > 20)
-      throw new HttpError(400, "Enter the coach registration number.");
+      throw new HttpError(400, "Enter the bus registration number.");
     if (!Number.isInteger(capacity) || capacity < 5 || capacity > 100) {
       throw new HttpError(400, "Seat capacity must be between 5 and 100.");
     }
@@ -531,20 +531,20 @@ router.post(
         .status(201)
         .json({
           success: true,
-          message: `Coach ${bus.bus_number} registered with ${capacity} seats.`,
+          message: `Bus ${bus.bus_number} registered with ${capacity} seats.`,
           bus,
         });
     } catch (error) {
       if (error.code === "23505")
         throw new HttpError(
           409,
-          "A coach with this registration number already exists.",
+          "A bus with this registration number already exists.",
         );
       if (error.code === "23503")
         throw new HttpError(400, "The selected terminal does not exist.");
       throw error;
     }
-  }, "We could not register this coach."),
+  }, "We could not register this bus."),
 );
 
 router.patch(
@@ -558,7 +558,7 @@ router.patch(
       "UPDATE buses SET is_active = $1 WHERE id = $2 RETURNING id, bus_number, is_active",
       [req.body.isActive, busId],
     );
-    if (!rows[0]) throw new HttpError(404, "Coach not found.");
+    if (!rows[0]) throw new HttpError(404, "Bus not found.");
     res.json({ success: true, bus: rows[0] });
   }),
 );
