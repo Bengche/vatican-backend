@@ -1,5 +1,6 @@
 import "./config/env.js";
 import express from "express";
+import { URL } from "url";
 import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
@@ -88,12 +89,10 @@ app.use((err, req, res, next) => {
   console.error("[Server] Unhandled error:", err);
   captureError(err);
   alertAdmin("Unhandled server error", err.stack || String(err));
-  return res
-    .status(500)
-    .json({
-      success: false,
-      message: "Something went wrong. Please try again.",
-    });
+  return res.status(500).json({
+    success: false,
+    message: "Something went wrong. Please try again.",
+  });
 });
 
 process.on("unhandledRejection", (reason) => {
