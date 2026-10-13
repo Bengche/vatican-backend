@@ -49,6 +49,36 @@ const MIGRATIONS = [
      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
      UNIQUE (agent_id, report_date)
    )`,
+  `CREATE TABLE IF NOT EXISTS signing_keys (
+     key_id CHAR(8) PRIMARY KEY,
+     public_key TEXT NOT NULL,
+     private_key TEXT NOT NULL,
+     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+     retired_at TIMESTAMP
+   )`,
+  `CREATE TABLE IF NOT EXISTS devices (
+     id UUID PRIMARY KEY,
+     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     label VARCHAR(80) NOT NULL,
+     kind VARCHAR(20) NOT NULL DEFAULT 'scanner' CHECK (kind IN ('scanner', 'counter')),
+     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+     last_seen_at TIMESTAMP,
+     last_sync_at TIMESTAMP,
+     revoked_at TIMESTAMP,
+     revoked_by BIGINT
+   )`,
+  `CREATE TABLE IF NOT EXISTS gate_events (
+     id UUID PRIMARY KEY,
+     booking_id BIGINT REFERENCES bookings(id) ON DELETE SET NULL,
+     device_id UUID REFERENCES devices(id) ON DELETE SET NULL,
+     user_id BIGINT,
+     scanned_at TIMESTAMP NOT NULL,
+     received_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+     result VARCHAR(20) NOT NULL CHECK (result IN ('applied', 'duplicate', 'rejected')),
+     detail TEXT
+   )`,
+  `CREATE INDEX IF NOT EXISTS idx_gate_events_booking ON gate_events (booking_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_devices_user ON devices (user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_bookings_trip_status ON bookings (trip_id, status)`,
   `CREATE INDEX IF NOT EXISTS idx_booking_seats_lookup ON booking_seats (booking_id, seat_id)`,
   `CREATE INDEX IF NOT EXISTS idx_bookings_user_created ON bookings (user_id, created_at DESC)`,

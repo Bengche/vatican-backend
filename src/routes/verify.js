@@ -2,7 +2,7 @@ import express from "express";
 import QRCode from "qrcode";
 import db from "../database/pg.js";
 import { brand } from "../config/brand.js";
-import { verifyUrl } from "../services/emailTemplates.js";
+import { qrValueFor } from "../services/ticketSigning.js";
 import { handle } from "../utils/httpError.js";
 
 const router = express.Router();
@@ -100,17 +100,24 @@ router.get(
     const { hash } = req.params;
     if (!HASH_PATTERN.test(hash)) return res.status(404).end();
 
-    const exists = await db.query(
-      "SELECT 1 FROM bookings WHERE qr_code_hash = $1",
+    const found = await db.query(
+      "SELECT booking_ref, trip_id FROM bookings WHERE qr_code_hash = $1",
       [hash],
     );
-    if (exists.rows.length === 0) return res.status(404).end();
+    if (found.rows.length === 0) return res.status(404).end();
 
-    const png = await QRCode.toBuffer(verifyUrl(hash), {
-      margin: 1,
-      width: 360,
-      color: { dark: brand.colors.primary, light: "#ffffff" },
-    });
+    const png = await QRCode.toBuffer(
+      await qrValueFor({
+        hash,
+        ref: found.rows[0].booking_ref,
+        tripId: found.rows[0].trip_id,
+      }),
+      {
+        margin: 1,
+        width: 360,
+        color: { dark: brand.colors.primary, light: "#ffffff" },
+      },
+    );
     res.set({
       "Content-Type": "image/png",
       "Cache-Control": "public, max-age=31536000, immutable",

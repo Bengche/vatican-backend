@@ -3,6 +3,7 @@ import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
 import { brand } from "../config/brand.js";
 import { verifyUrl } from "./emailTemplates.js";
+import { qrValueFor } from "./ticketSigning.js";
 import {
   formatDate,
   formatTime,
@@ -67,7 +68,14 @@ function fit(doc, text, maxWidth) {
  * (shape produced by receiptService) and resolves with the PDF bytes.
  */
 export async function renderTicketPdf(record) {
-  const qrBuffer = await QRCode.toBuffer(verifyUrl(record.qr_code_hash), {
+  const qrValue =
+    record.qr_url ??
+    (await qrValueFor({
+      hash: record.qr_code_hash,
+      ref: record.booking_ref,
+      tripId: record.trip_id,
+    }));
+  const qrBuffer = await QRCode.toBuffer(qrValue, {
     margin: 1,
     width: 360,
     color: { dark: C.primary, light: "#ffffff" },

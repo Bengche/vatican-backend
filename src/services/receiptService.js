@@ -1,4 +1,5 @@
 import db from "../database/pg.js";
+import { qrValueFor } from "./ticketSigning.js";
 
 const RECORD_SELECT = `
   SELECT
@@ -79,12 +80,23 @@ function withBreakdown(row) {
   };
 }
 
+/** Adds the signed QR address that scanners can verify without a network connection. */
+async function withQr(row) {
+  const record = withBreakdown(row);
+  record.qr_url = await qrValueFor({
+    hash: record.qr_code_hash,
+    ref: record.booking_ref,
+    tripId: record.trip_id,
+  });
+  return record;
+}
+
 export async function getBookingRecord(bookingId, runner = db) {
   const { rows } = await runner.query(
     `${RECORD_SELECT} WHERE b.id = $1 LIMIT 1`,
     [bookingId],
   );
-  return rows[0] ? withBreakdown(rows[0]) : null;
+  return rows[0] ? withQr(rows[0]) : null;
 }
 
 export async function listConfirmedBookingsForUser(userId) {
@@ -92,5 +104,5 @@ export async function listConfirmedBookingsForUser(userId) {
     `${RECORD_SELECT} WHERE b.user_id = $1 AND b.status = 'confirmed' ORDER BY t.travel_date DESC, t.departure_time DESC, b.id DESC`,
     [userId],
   );
-  return rows.map(withBreakdown);
+  return Promise.all(rows.map(withQr));
 }

@@ -2,6 +2,7 @@ import "./config/env.js";
 import express from "express";
 import { URL } from "url";
 import cors from "cors";
+import compression from "compression";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import { env } from "./config/env.js";
@@ -24,6 +25,8 @@ import payments from "./routes/payments.js";
 import verification from "./routes/verify.js";
 import admin from "./adminRoutes/admin.js";
 import staff from "./adminRoutes/staff.js";
+import offlineGate from "./adminRoutes/offlineGate.js";
+import devices from "./adminRoutes/devices.js";
 import operations from "./adminRoutes/operations.js";
 import { alertAdmin } from "./services/alerts.js";
 import { initMonitoring, captureError } from "./services/monitoring.js";
@@ -35,6 +38,8 @@ const app = express();
 app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+// Offline data downloads are large; compressing them matters on slow mobile connections.
+app.use(compression());
 app.use(
   cors({
     origin(origin, callback) {
@@ -71,6 +76,8 @@ app.use("/api", trips);
 app.use("/api", bookings);
 app.use("/api", payments);
 app.use("/api", verification);
+app.use("/api", offlineGate);
+app.use("/api", devices);
 app.use("/api", staff);
 app.use("/api", operations);
 app.use("/api", admin);
