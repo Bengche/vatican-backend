@@ -8,6 +8,7 @@ import {
   releaseSeatLocks,
 } from "../services/seatLockService.js";
 import { quoteFare } from "../services/pricing.js";
+import { counterHoldsTrip } from "../services/counterLease.js";
 import {
   getBookingRecord,
   listConfirmedBookingsForUser,
@@ -203,6 +204,13 @@ router.post(
     const passengers = parsePassengers(req.body?.passengers);
     const seatIds = passengers.map((p) => p.seatId);
     const userId = req.user.id;
+
+    if (await counterHoldsTrip(tripId)) {
+      throw new HttpError(
+        409,
+        "Online booking for this departure is paused for a few minutes while the terminal counter updates its seats. Please try again shortly or book at the counter.",
+      );
+    }
 
     const lock = await acquireSeatLocks(tripId, seatIds, `user:${userId}`);
     if (!lock.success) {

@@ -3,6 +3,7 @@ import db, { withTransaction } from "../database/pg.js";
 import { requireStaff } from "../middleware/auth.js";
 import { requireDevice } from "./devices.js";
 import { listPublicKeys } from "../services/ticketSigning.js";
+import { trustedTime } from "../utils/clock.js";
 import { HttpError, handle } from "../utils/httpError.js";
 
 const router = express.Router();
@@ -11,8 +12,6 @@ router.use("/admin/gate/offline", requireStaff, requireDevice);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HASH_PATTERN = /^[a-f0-9]{64}$/i;
 const MAX_BATCH = 200;
-const MAX_FUTURE_SKEW_MS = 5 * 60_000;
-const MAX_AGE_MS = 30 * 86_400_000;
 
 /** GET /api/admin/gate/offline/ping - tiny check that tells a device it is still allowed to work */
 router.get(
@@ -34,7 +33,7 @@ router.get(
     const days = Math.min(14, Math.max(1, Number.parseInt(req.query.days, 10) || 3));
 
     const trips = await db.query(
-      `SELECT t.id, t.travel_date, t.departure_time, buses.bus_number,
+      `SELECT t.id, t.client_id, t.travel_date, t.departure_time, buses.bus_number,
               p1.city AS origin_city, p2.city AS destination_city
          FROM trips t
          JOIN routes r ON t.route_id = r.id
@@ -51,6 +50,7 @@ router.get(
     const bookings = tripIds.length
       ? await db.query(
           `SELECT b.id, b.qr_code_hash AS hash, b.booking_ref AS ref, b.trip_id, b.status,
+                  b.paper_ref, b.qr_trip_id AS qr_trip,
                   b.is_checked_in AS boarded, b.checked_in_at AS boarded_at,
                   COALESCE(
                     json_agg(json_build_object('seat', bseats.seat_label, 'name', bs.passenger_name)
@@ -69,27 +69,33 @@ router.get(
 
     const today = (await db.query("SELECT CURRENT_DATE::text AS today")).rows[0].today;
 
+    // Counter tills sign the tickets they print while offline, so scanners need their public keys too.
+    const deviceKeys = await db.query(
+      `SELECT code, public_key, revoked_at FROM devices
+        WHERE kind = 'counter' AND code IS NOT NULL AND public_key IS NOT NULL`,
+    );
+    const keys = [
+      ...(await listPublicKeys()),
+      ...deviceKeys.rows.map((d) => ({
+        keyId: `c${d.code}`,
+        publicKey: d.public_key,
+        retired: false,
+        revoked: Boolean(d.revoked_at),
+      })),
+    ];
+
     res.set("Cache-Control", "no-store");
     res.json({
       success: true,
       serverTime: new Date().toISOString(),
       today,
-      keys: await listPublicKeys(),
+      keys,
       trips: trips.rows,
       bookings: bookings.rows,
     });
   }, "We could not prepare the offline data right now."),
 );
 
-/** Time a boarding really happened, ignoring clocks that are obviously wrong. */
-function trustedTime(raw) {
-  const parsed = new Date(raw);
-  const now = Date.now();
-  const ms = parsed.getTime();
-  return Number.isFinite(ms) && ms <= now + MAX_FUTURE_SKEW_MS && ms >= now - MAX_AGE_MS
-    ? parsed
-    : new Date(now);
-}
 
 async function applyBoarding(client, event, req) {
   await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [event.id]);
@@ -110,6 +116,10 @@ async function applyBoarding(client, event, req) {
   );
   const row = booking.rows[0];
 
+  // A ticket sold on a counter that has not synced yet: keep the boarding on the device and try again later.
+  if (!row && Date.now() - scannedAt.getTime() < 3 * 86_400_000) {
+    return { id: event.id, result: "pending", detail: "Ticket not known to the server yet.", bookingId: null };
+  }
   let result;
   let detail = null;
   if (!row) {

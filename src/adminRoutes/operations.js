@@ -38,6 +38,7 @@ router.get(
 
     const { rows } = await db.query(
       `SELECT b.id, b.booking_ref, b.status, COALESCE(b.payment_method, 'momo') AS payment_method,
+              b.counter_payment, b.payment_unverified, b.paper_ref,
               b.total_amount_fcfa, b.created_at, b.is_checked_in,
               t.travel_date, t.departure_time, p1.city AS origin_city, p2.city AS destination_city,
               (SELECT string_agg(bs.passenger_name, ', ' ORDER BY bs.id) FROM booking_seats bs WHERE bs.booking_id = b.id) AS passengers
@@ -46,7 +47,7 @@ router.get(
          JOIN routes r ON t.route_id = r.id
          JOIN agencies_parks p1 ON r.origin_park_id = p1.id
          JOIN agencies_parks p2 ON r.destination_park_id = p2.id
-        WHERE ($1 = '' OR b.booking_ref ILIKE $2 OR b.passenger_phone ILIKE $2 OR b.passenger_name ILIKE $2
+        WHERE ($1 = '' OR b.booking_ref ILIKE $2 OR b.paper_ref ILIKE $2 OR b.passenger_phone ILIKE $2 OR b.passenger_name ILIKE $2
                OR EXISTS (SELECT 1 FROM booking_seats bs WHERE bs.booking_id = b.id AND (bs.passenger_name ILIKE $2 OR bs.id_card_number ILIKE $2)))
           AND ($3::text IS NULL OR b.status = $3)
         ORDER BY b.created_at DESC
@@ -323,7 +324,8 @@ async function cashFigures(date, agentId = null) {
             COALESCE(SUM(b.total_amount_fcfa), 0) AS sales,
             COALESCE(SUM((SELECT COUNT(*) FROM booking_seats bs WHERE bs.booking_id = b.id)), 0) AS tickets
        FROM bookings b
-      WHERE b.payment_method = 'cash_counter' AND b.status IN ('confirmed', 'cancelled')
+      WHERE b.payment_method = 'cash_counter' AND COALESCE(b.counter_payment, 'cash') = 'cash'
+        AND b.status IN ('confirmed', 'cancelled')
         AND b.created_at::date = $1::date AND ($2::bigint IS NULL OR b.user_id = $2)
       GROUP BY b.user_id`,
     [date, agentId],
@@ -332,6 +334,7 @@ async function cashFigures(date, agentId = null) {
     `SELECT b.user_id AS agent_id, COALESCE(SUM(p.amount_fcfa), 0) AS refunds
        FROM payouts p JOIN bookings b ON b.id = p.booking_id
       WHERE p.kind = 'refund' AND p.phone IS NULL AND p.status = 'sent'
+        AND COALESCE(b.counter_payment, 'cash') = 'cash'
         AND p.created_at::date = $1::date AND ($2::bigint IS NULL OR b.user_id = $2)
       GROUP BY b.user_id`,
     [date, agentId],
@@ -488,7 +491,7 @@ router.get(
       expected: 0,
     };
     const tickets = await db.query(
-      `SELECT b.id, b.booking_ref, b.status, b.total_amount_fcfa, b.created_at,
+      `SELECT b.id, b.booking_ref, b.status, b.total_amount_fcfa, b.created_at, b.counter_payment, b.payment_unverified,
               p1.city AS origin_city, p2.city AS destination_city, t.travel_date, t.departure_time
          FROM bookings b
          JOIN trips t ON b.trip_id = t.id
