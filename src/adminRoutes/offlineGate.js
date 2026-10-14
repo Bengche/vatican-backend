@@ -53,7 +53,7 @@ router.get(
                   b.paper_ref, b.qr_trip_id AS qr_trip,
                   b.is_checked_in AS boarded, b.checked_in_at AS boarded_at,
                   COALESCE(
-                    json_agg(json_build_object('seat', bseats.seat_label, 'name', bs.passenger_name)
+                    json_agg(json_build_object('seat', bseats.seat_label, 'name', bs.passenger_name, 'id', bs.id_card_number)
                              ORDER BY bseats.row_num, bseats.col_num)
                       FILTER (WHERE bs.id IS NOT NULL),
                     '[]'::json

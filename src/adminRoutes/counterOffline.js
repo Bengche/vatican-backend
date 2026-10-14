@@ -227,9 +227,9 @@ async function applySale(client, input, req, live) {
   const claimed = Number.parseInt(input.amount, 10);
   const save = async (result, detail, booking = null) => {
     await client.query(
-      `INSERT INTO offline_sales (id, device_id, user_id, booking_id, booking_ref, late_entry, result, detail, claimed_amount_fcfa, sold_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz)`,
-      [id, req.device.id, req.user.id, booking?.id ?? null, booking?.ref ?? String(input.ref ?? "").slice(0, 40), late, result, detail, Number.isInteger(claimed) ? claimed : null, soldAt.toISOString()],
+      `INSERT INTO offline_sales (id, device_id, user_id, booking_id, booking_ref, late_entry, result, detail, claimed_amount_fcfa, sold_at, live)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::timestamptz, $11)`,
+      [id, req.device.id, req.user.id, booking?.id ?? null, booking?.ref ?? String(input.ref ?? "").slice(0, 40), late, result, detail, Number.isInteger(claimed) ? claimed : null, soldAt.toISOString(), live],
     );
     return { id, result, detail, bookingId: booking ? String(booking.id) : null, bookingRef: booking?.ref ?? null };
   };

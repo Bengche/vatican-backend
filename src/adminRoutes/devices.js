@@ -24,11 +24,17 @@ export async function requireDevice(req, res, next) {
       });
     }
 
+    const clientTime = Number(req.get("x-client-time"));
+    const drift = Number.isFinite(clientTime) && clientTime > 0 ? Date.now() - clientTime : null;
+    const pending = Number.parseInt(req.get("x-pending") ?? "", 10);
+
     const { rows } = await db.query(
-      `UPDATE devices SET last_seen_at = NOW()
+      `UPDATE devices SET last_seen_at = NOW(),
+              clock_offset_ms = COALESCE($4::bigint, clock_offset_ms),
+              pending_items = COALESCE($5::int, pending_items)
         WHERE id = $1 AND (user_id = $2 OR $3::boolean)
         RETURNING id, user_id, kind, code, park_id, revoked_at`,
-      [deviceId, req.user.id, isAdminRole(req.user.role)],
+      [deviceId, req.user.id, isAdminRole(req.user.role), drift, Number.isInteger(pending) && pending >= 0 ? pending : null],
     );
     const device = rows[0];
 
@@ -140,7 +146,7 @@ router.get(
   handle(async (req, res) => {
     const { rows } = await db.query(
       `SELECT d.id, d.label, d.kind, d.created_at, d.last_seen_at, d.last_sync_at, d.revoked_at,
-              d.selling_since, d.lease_until, ap.city AS park_city, ap.park_name,
+              d.selling_since, d.lease_until, d.clock_offset_ms, d.pending_items, ap.city AS park_city, ap.park_name,
               u.full_name AS user_name, u.role AS user_role
          FROM devices d
          JOIN users u ON u.id = d.user_id
